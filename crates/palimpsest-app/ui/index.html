@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Palimpsest</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">P</span>
+        <div>
+          <h1>Palimpsest</h1>
+          <p class="tagline">Wrong-layout typing, quietly fixed.</p>
+        </div>
+      </div>
+      <label class="switch" title="Master switch">
+        <input type="checkbox" id="enabled" />
+        <span class="slider"></span>
+        <span class="switch-label" id="enabled-label">On</span>
+      </label>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>Sensitivity</h2>
+        <p class="hint">
+          How sure Palimpsest must be before it corrects. Lower is more
+          cautious (fewer false positives); higher is more eager.
+        </p>
+        <div class="slider-row">
+          <span class="slider-end">Cautious</span>
+          <input type="range" id="sensitivity" min="0" max="1" step="0.05" />
+          <span class="slider-end">Eager</span>
+          <output id="sensitivity-value">0.50</output>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Layout pairs</h2>
+          <button class="ghost" id="add-pair" type="button">+ Add pair</button>
+        </div>
+        <p class="hint">
+          Pairs are considered in both directions. Palimpsest reinterprets a
+          word across these layouts and switches to the better one.
+        </p>
+        <div id="pairs"></div>
+      </section>
+
+      <section class="card">
+        <h2>Ignore in these apps</h2>
+        <p class="hint">
+          Palimpsest stays completely silent in these — terminals, IDEs, games.
+          Pick one from your running apps, or type executable names (one per
+          line, e.g. <code>cmd.exe</code>).
+        </p>
+        <div class="picker-row">
+          <select id="proc-list"></select>
+          <button class="ghost" id="add-proc" type="button">Add</button>
+          <button class="ghost" id="refresh-proc" type="button" title="Refresh list">↻</button>
+        </div>
+        <textarea id="ignore" rows="4" spellcheck="false"></textarea>
+      </section>
+
+      <section class="card">
+        <h2>Advanced</h2>
+        <div class="field">
+          <label>Manual hotkey</label>
+          <div class="hotkey-row">
+            <span id="hotkey-display" class="hotkey-display">—</span>
+            <button class="ghost" id="set-hotkey" type="button">Set hotkey</button>
+            <button class="ghost" id="clear-hotkey" type="button">Clear</button>
+          </div>
+          <span class="hint inline">
+            Click “Set hotkey”, then press a combination (e.g. Ctrl+Shift+K) or a
+            single non-typing key (Pause, F8, Insert). Forces a fix on the current
+            word. Esc cancels.
+          </span>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="autostart" />
+          Launch Palimpsest at login
+        </label>
+        <div class="field" style="margin-top: 12px">
+          <button class="ghost" id="open-logs" type="button">Open logs folder</button>
+          <span class="hint inline">Diagnostics for bug reports. Never contains what you type.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Recent corrections</h2>
+          <button class="ghost" id="undo" type="button">Undo last</button>
+        </div>
+        <ul id="history" class="history">
+          <li class="empty">Nothing yet.</li>
+        </ul>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden"></div>
+    <div id="status" class="statusbar"></div>
+
+    <script src="main.js"></script>
+  </body>
+</html>

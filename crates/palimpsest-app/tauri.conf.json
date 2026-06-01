@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Palimpsest",
+  "version": "0.1.0",
+  "identifier": "com.palimpsest.desktop",
+  "build": {
+    "frontendDist": "ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "settings",
+        "title": "Palimpsest",
+        "width": 540,
+        "height": 680,
+        "minWidth": 420,
+        "minHeight": 480,
+        "resizable": true,
+        "visible": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Palimpsest",
+    "category": "Productivity",
+    "shortDescription": "Fixes wrong-keyboard-layout typing in place.",
+    "longDescription": "Palimpsest detects when you've typed a word in the wrong keyboard layout, erases the gibberish, switches the OS layout, and retypes the text you meant — like Punto Switcher. Everything stays on your machine; it never records what you type.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}
