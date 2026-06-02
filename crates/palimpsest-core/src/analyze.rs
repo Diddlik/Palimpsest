@@ -9,6 +9,7 @@
 
 use crate::buffer::Key;
 use crate::config::LayoutPair;
+use crate::phonetic;
 use crate::scoring::{Lang, Models};
 
 /// Maps physical keystrokes to the text they would produce under a layout.
@@ -126,6 +127,31 @@ fn evaluate(
             && best.as_ref().is_none_or(|(_, _, s)| alt_score > *s)
         {
             best = Some((target.to_string(), alt_text, alt_score));
+        }
+    }
+
+    // Phonetic pass: when the current layout is Latin, also try reinterpreting
+    // the typed text as phonetically-intended Russian. This handles users who
+    // type "kak" meaning "как" or "privet" meaning "привет" without using the
+    // physical ЙЦУКЕН position mapping.
+    if current_lang == Lang::En {
+        // Find the Russian target KLID from the configured pairs so the engine
+        // switches to it after correction (same as for a layout-based correction).
+        if let Some(ru_klid) = candidate_targets(current_layout, pairs)
+            .into_iter()
+            .find(|k| Lang::from_klid(k) == Some(Lang::Ru))
+        {
+            let phonetic_text = phonetic::transliterate_ru(&current_text);
+            // Only compete if transliteration actually produced Cyrillic output —
+            // a digit-only current_text would be unchanged and must not be offered.
+            if phonetic::has_cyrillic(&phonetic_text) {
+                let phonetic_score = models.score(Lang::Ru, &phonetic_text);
+                if phonetic_score >= ALT_PLAUSIBILITY_FLOOR
+                    && best.as_ref().is_none_or(|(_, _, s)| phonetic_score > *s)
+                {
+                    best = Some((ru_klid.to_string(), phonetic_text, phonetic_score));
+                }
+            }
         }
     }
 
@@ -320,5 +346,66 @@ mod tests {
             suggest(&keys("hello"), EN, &pairs(), &FakeReinterp, &Models::builtin()),
             Decision::Keep
         );
+    }
+
+    // --- Phonetic path tests ---
+
+    #[test]
+    fn phonetically_typed_kak_is_corrected_to_russian() {
+        // "kak" typed on EN while meaning Russian "как". Under the ЙЦУКЕН
+        // physical mapping this would be "лфл" (gibberish), but the phonetic
+        // path should recognise it — the bigram margin is comfortably cleared.
+        let d = analyze_word("kak", EN);
+        match d {
+            Decision::Correct { text, target_layout, .. } => {
+                assert_eq!(text, "как");
+                assert_eq!(Lang::from_klid(&target_layout), Some(Lang::Ru));
+            }
+            other => panic!("expected phonetic correction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn phonetically_typed_dela_corrected_via_manual_hotkey() {
+        // "dela" typed on EN while meaning Russian "дела". The Russian phonetic
+        // score beats English, but not by the 1.15-nat auto-correct margin
+        // (because "dela" looks plausible in English). The manual hotkey path
+        // (`suggest`) corrects it with no margin requirement.
+        let d = suggest(&keys("dela"), EN, &pairs(), &FakeReinterp, &Models::builtin());
+        match d {
+            Decision::Correct { text, target_layout, .. } => {
+                assert_eq!(text, "дела");
+                assert_eq!(Lang::from_klid(&target_layout), Some(Lang::Ru));
+            }
+            other => panic!("expected manual phonetic correction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn phonetically_typed_privet_corrected_via_manual_hotkey() {
+        // "privet" is both a real English word (a shrub) and a phonetic
+        // spelling of Russian "привет". Auto-correction intentionally does NOT
+        // fire at default sensitivity to avoid false positives on English text.
+        // The manual hotkey (`suggest`) still corrects it because Russian
+        // scores slightly higher.
+        assert_eq!(analyze_word("privet", EN), Decision::Keep, "privet must not auto-correct");
+        let d = suggest(&keys("privet"), EN, &pairs(), &FakeReinterp, &Models::builtin());
+        match d {
+            Decision::Correct { text, target_layout, .. } => {
+                assert_eq!(text, "привет");
+                assert_eq!(Lang::from_klid(&target_layout), Some(Lang::Ru));
+            }
+            other => panic!("expected manual phonetic correction, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn common_english_words_not_phonetically_corrected() {
+        // Words that are clearly English must never be silently converted to
+        // Russian, even at the most aggressive auto-correct sensitivity.
+        for word in &["hello", "sport", "table", "water"] {
+            let d = analyze(&keys(word), EN, &pairs(), &FakeReinterp, &Models::builtin(), 1.0);
+            assert_eq!(d, Decision::Keep, "{word} should not be phonetically corrected");
+        }
     }
 }

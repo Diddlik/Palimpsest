@@ -157,9 +157,14 @@ pub fn languages_in(config: &Config) -> Vec<Lang> {
     langs
 }
 
-/// Embedded training corpora. Deliberately small but rich in common bigrams of
-/// each language; never derived from anything the user types. Phase 6 can swap
-/// these for larger embedded tables or `fst` wordlists without touching callers.
+/// Embedded training corpora. Rich enough to give reliable bigram statistics for
+/// common words in each language; never derived from anything the user types.
+/// Phase 6 can swap these for larger embedded tables or `fst` wordlists without
+/// touching callers.
+///
+/// Size target: ≥ 3 000 characters per language so the smoothed bigram
+/// probabilities are stable enough to separate in-language words from near-miss
+/// phonetic transliterations (e.g. English "dela" vs Russian "дела").
 mod corpus {
     pub const EN: &str = "\
 the quick brown fox jumps over the lazy dog. hello there, how are you doing today? \
@@ -169,7 +174,29 @@ please remember to bring your laptop, charger, and notebook to the meeting. \
 this is a simple example of common english words and ordinary sentences. \
 people often write messages to friends about work, family, food, and travel. \
 the children played outside while their parents prepared a wonderful dinner. \
-knowledge, language, and communication shape the way that humans understand things.";
+knowledge, language, and communication shape the way that humans understand things. \
+she said that the door was open and the light inside was still on. \
+they walked together down the street until they reached the corner store. \
+he looked at the screen and tried to figure out what had gone wrong again. \
+the team decided to meet on monday morning before the project deadline arrived. \
+after a long day of work, he finally sat down and had a cup of coffee. \
+the report was finished on time and sent to the client without any issues. \
+students need to practice every day if they want to improve their skills. \
+the weather was cold and windy, so they decided to stay home and rest. \
+she opened the book and started reading from the first chapter carefully. \
+all the documents were signed and the deal was officially closed today. \
+he drove to the office early in the morning to avoid the traffic jam. \
+the flowers in the garden were beautiful and smelled wonderful this spring. \
+every morning she made herself a cup of tea and sat by the window reading. \
+the new software update fixed several bugs and improved overall performance. \
+they agreed to split the cost and share the responsibility equally between them. \
+the sunset over the mountains was one of the most beautiful things he had seen. \
+it is important to listen carefully before you respond or make a decision. \
+the museum was closed on monday so they decided to visit the park instead. \
+when the rain finally stopped, they went outside and enjoyed the fresh air. \
+she sent him a long message explaining everything that had happened last week. \
+the company announced a new product that would change the way people communicate. \
+he always kept his desk clean and organised so he could focus on his work.";
 
     pub const RU: &str = "\
 привет, как дела сегодня? спасибо большое за помощь и за твоё время. \
@@ -179,7 +206,29 @@ knowledge, language, and communication shape the way that humans understand thin
 это простой пример обычных русских слов и самых распространённых предложений. \
 люди часто пишут сообщения друзьям о работе, семье, еде и путешествиях. \
 дети играли на улице, пока их родители готовили вкусный и сытный ужин. \
-знание, язык и общение определяют то, как человек понимает окружающий мир.";
+знание, язык и общение определяют то, как человек понимает окружающий мир. \
+она открыла дверь и увидела, что в комнате горит свет и кто-то есть дома. \
+они шли вместе по улице, разговаривая о работе и о планах на выходные. \
+он посмотрел на экран и попытался понять, что именно пошло не так сегодня. \
+команда решила собраться в понедельник утром до начала важного совещания. \
+после долгого рабочего дня он наконец сел и выпил чашку горячего чая. \
+отчёт был готов вовремя и отправлен клиенту без каких-либо задержек. \
+студентам нужно заниматься каждый день, если они хотят улучшить свои результаты. \
+погода была холодной и ветреной, поэтому они решили остаться дома и отдохнуть. \
+она открыла книгу и начала читать с самого начала очень внимательно. \
+все документы были подписаны и сделка официально закрыта сегодня вечером. \
+он приехал в офис рано утром, чтобы успеть до начала рабочего дня. \
+цветы в саду были красивыми и приятно пахли в это солнечное весеннее утро. \
+каждое утро она готовила себе чашку кофе и садилась у окна с книгой. \
+новое обновление программы исправило несколько ошибок и улучшило производительность. \
+они договорились разделить расходы и распределить обязанности поровну между собой. \
+закат над горами был одним из самых красивых зрелищ, которые он когда-либо видел. \
+важно внимательно слушать собеседника, прежде чем отвечать или принимать решение. \
+музей был закрыт в понедельник, поэтому они решили вместо этого посетить парк. \
+когда дождь наконец прекратился, они вышли на улицу и наслаждались свежим воздухом. \
+она отправила ему длинное сообщение, в котором объяснила всё, что произошло на прошлой неделе. \
+компания объявила о новом продукте, который изменит способ общения людей друг с другом. \
+он всегда держал свой стол в чистоте и порядке, чтобы лучше сосредоточиться на работе.";
 
     pub const DE: &str = "\
 hallo, wie geht es dir heute? vielen dank für deine zeit und deine hilfe. \
@@ -189,7 +238,19 @@ bitte vergiss nicht, deinen laptop, das ladegerät und ein heft mitzubringen. \
 dies ist ein einfaches beispiel für gewöhnliche deutsche wörter und sätze. \
 menschen schreiben oft nachrichten an freunde über arbeit, familie und reisen. \
 die kinder spielten draußen, während ihre eltern ein leckeres abendessen kochten. \
-wissen, sprache und kommunikation prägen das verständnis der menschen.";
+wissen, sprache und kommunikation prägen das verständnis der menschen. \
+sie öffnete die tür und sah, dass das licht im zimmer noch an war. \
+sie gingen gemeinsam die straße entlang und unterhielten sich über ihre pläne. \
+er schaute auf den bildschirm und versuchte herauszufinden, was schief gelaufen war. \
+das team beschloss, sich montagmorgen vor der wichtigen besprechung zu treffen. \
+nach einem langen arbeitstag setzte er sich endlich hin und trank einen kaffee. \
+der bericht war rechtzeitig fertig und wurde ohne verzögerung an den kunden geschickt. \
+studenten müssen jeden tag üben, wenn sie ihre leistungen verbessern wollen. \
+das wetter war kalt und windig, deshalb entschlossen sie sich, zu hause zu bleiben. \
+sie öffnete das buch und begann von anfang an sehr aufmerksam zu lesen. \
+alle unterlagen wurden unterschrieben und das geschäft wurde heute abend offiziell abgeschlossen. \
+er fuhr früh morgens ins büro, um vor dem arbeitsbeginn dort zu sein. \
+die blumen im garten waren wunderschön und dufteten herrlich an diesem frühlingstag.";
 }
 
 #[cfg(test)]

@@ -45,6 +45,8 @@ pub use config::{is_ignored, Config, LayoutPair};
 pub mod events;
 pub use events::{Command, CorrectionEvent, EngineEvent};
 
+pub mod phonetic;
+
 #[cfg(windows)]
 pub mod context;
 
