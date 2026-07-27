@@ -145,17 +145,6 @@ language and falls back to English for anything else; Settings → Language pins
 specific one. This is presentation only — it does not change which languages
 Palimpsest *corrects*, which follows the configured layout pairs.
 
-## Screenshots
-
-Screenshots are not captured yet (the UI exists but needs a live desktop session
-to photograph). Placeholders for future documentation:
-
-![Tray menu placeholder](docs/screenshots/tray-placeholder.png)
-
-![Settings window placeholder](docs/screenshots/settings-placeholder.png)
-
-![Correction history placeholder](docs/screenshots/history-placeholder.png)
-
 ## Build and development
 
 Requirements:

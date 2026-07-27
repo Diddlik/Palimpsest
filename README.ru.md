@@ -10,6 +10,7 @@ Palimpsest — это Windows-утилита для тех, кто часто п
 Идея похожа на Punto Switcher, Mahou и Caramba Switcher, но этот проект сделан
 как локальная утилита на Rust с упором на низкую задержку обработки клавиатуры,
 приватность и предсказуемое поведение при исправлении.
+<img width="1164" height="1383" alt="Окно настроек Palimpsest" src="https://github.com/user-attachments/assets/3b03aff8-de1e-4027-a0a9-8a1531de736b" />
 
 > Состояние разработки: функционально готовая предварительная версия; остаются
 > интерактивная проверка и подписанный релиз. Весь конвейер реализован — hook,
@@ -144,17 +145,6 @@ Palimpsest не сможет надежно вводить текст в окн�
 интерфейса Windows, а для остальных языков откатывается к английскому. В разделе
 Настройки → Язык можно закрепить конкретный. Это только оформление — набор
 языков, которые Palimpsest *исправляет*, определяется парами раскладок.
-
-## Скриншоты
-
-Скриншотов пока нет (интерфейс готов, но для съёмки нужна живая сессия рабочего
-стола). Будущие места для изображений:
-
-![Tray menu placeholder](docs/screenshots/tray-placeholder.png)
-
-![Settings window placeholder](docs/screenshots/settings-placeholder.png)
-
-![Correction history placeholder](docs/screenshots/history-placeholder.png)
 
 ## Сборка и разработка
 
