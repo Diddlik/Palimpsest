@@ -1,0 +1,58 @@
+name: Release
+
+# Push a tag to ship: `git tag v0.3.0 && git push origin v0.3.0`. The job builds
+# the NSIS installer plus the signed updater artifacts and publishes them as a
+# GitHub release, including the `latest.json` feed the in-app updater polls.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The updater compares the running build's version against the feed, so a
+      # tag that disagrees with the manifests would ship an update that either
+      # never offers itself or offers itself forever.
+      - name: Check tag matches declared version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart('v')
+          $conf = (Get-Content crates/palimpsest-app/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          if ($tag -ne $conf) { throw "Tag $tag != tauri.conf.json $conf" }
+          if ($tag -ne $cargo) { throw "Tag $tag != Cargo.toml $cargo" }
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo test --workspace
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: crates/palimpsest-app
+          tagName: ${{ github.ref_name }}
+          releaseName: Palimpsest ${{ github.ref_name }}
+          releaseBody: |
+            Windows installer: `Palimpsest_*_x64-setup.exe`.
+
+            The build is not code-signed yet, so SmartScreen will warn on first
+            run — "More info" → "Run anyway".
+          # Must be published, not a draft or prerelease: the in-app updater
+          # reads `releases/latest/download/latest.json`, and GitHub excludes
+          # both from "latest".
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

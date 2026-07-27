@@ -21,7 +21,7 @@ const FALLBACK_LAYOUTS = {
 // VK code → display name for the manual hotkey.
 const VK_NAMES = {
   0x13: "Pause", 0x91: "ScrollLock", 0x90: "NumLock", 0x2c: "PrintScreen",
-  0x2d: "Insert", 0x2e: "Delete", 0x24: "Home", 0x23: "End",
+  0x20: "Space", 0x2d: "Insert", 0x2e: "Delete", 0x24: "Home", 0x23: "End",
   0x21: "PageUp", 0x22: "PageDown", 0x25: "Left", 0x26: "Up",
   0x27: "Right", 0x28: "Down", 0x5d: "Menu", 0x1b: "Esc",
 };
@@ -41,10 +41,19 @@ const el = {
   hotkeyDisplay: $("hotkey-display"),
   setHotkey: $("set-hotkey"),
   clearHotkey: $("clear-hotkey"),
+  selectionHotkeyDisplay: $("selection-hotkey-display"),
+  setSelectionHotkey: $("set-selection-hotkey"),
+  clearSelectionHotkey: $("clear-selection-hotkey"),
   autostart: $("autostart"),
   undo: $("undo"),
   openLogs: $("open-logs"),
   history: $("history"),
+  learnOnUndo: $("learn-on-undo"),
+  words: $("words"),
+  clearWords: $("clear-words"),
+  checkUpdate: $("check-update"),
+  updateStatus: $("update-status"),
+  installUpdate: $("install-update"),
   toast: $("toast"),
   status: $("status"),
 };
@@ -56,6 +65,8 @@ let installedLayouts = []; // [{ klid, name }]
 let layoutNames = { ...FALLBACK_LAYOUTS };
 let currentHotkey = 0x13;
 let currentMods = 0;
+let currentSelectionHotkey = 0x91;
+let currentSelectionMods = 0;
 let capturing = false;
 
 // Modifier bit values — must match Config::MOD_* in the core (= Win32 MOD_*).
@@ -91,9 +102,21 @@ function setStatus(text) {
 
 function showToast(text) {
   el.toast.textContent = text;
-  el.toast.classList.remove("hidden");
+  el.toast.classList.remove("hidden", "error");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.toast.classList.add("hidden"), 2400);
+}
+
+// Failures get the toast too, not just the status bar — a rejected hotkey is
+// something the user must act on, and the status line is easy to miss. Held
+// longer because these messages explain what to try instead.
+function showError(text) {
+  setStatus(text);
+  el.toast.textContent = text;
+  el.toast.classList.remove("hidden");
+  el.toast.classList.add("error");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.toast.classList.add("hidden"), 7000);
 }
 
 // ----- Layout pair rows ------------------------------------------------------
@@ -111,7 +134,16 @@ function layoutSelect(selected) {
     if (klid === selected) opt.selected = true;
     sel.appendChild(opt);
   }
-  sel.addEventListener("change", apply);
+  // Layout names can be far wider than the window; the box truncates them, so
+  // carry the full name as a tooltip and keep it in step with the selection.
+  const syncTitle = () => {
+    sel.title = sel.selectedOptions[0]?.textContent || "";
+  };
+  syncTitle();
+  sel.addEventListener("change", () => {
+    syncTitle();
+    apply();
+  });
   return sel;
 }
 
@@ -128,6 +160,20 @@ function addPairRow(pair) {
   arrow.textContent = "⇄";
   const to = layoutSelect(pair ? pair.to : fallbackTo);
 
+  // Auto-detected by fingerprinting the layout at startup; shown so a
+  // misdetection can be corrected, since it selects the whole decision path.
+  const phonetic = document.createElement("label");
+  phonetic.className = "check inline";
+  phonetic.title =
+    "Each Cyrillic letter sits on its Latin sound-alike key, so wrong-layout " +
+    "text reads like “privet” rather than “ghbdtn”. Detected automatically.";
+  const phoneticBox = document.createElement("input");
+  phoneticBox.type = "checkbox";
+  phoneticBox.className = "phonetic";
+  phoneticBox.checked = pair ? pair.phonetic === true : false;
+  phoneticBox.addEventListener("change", apply);
+  phonetic.append(phoneticBox, document.createTextNode("phonetic"));
+
   const remove = document.createElement("button");
   remove.className = "icon";
   remove.type = "button";
@@ -138,14 +184,16 @@ function addPairRow(pair) {
     apply();
   });
 
-  row.append(from, arrow, to, remove);
+  row.append(from, arrow, to, phonetic, remove);
   el.pairs.appendChild(row);
 }
 
 function readPairs() {
   return [...el.pairs.querySelectorAll(".pair")].map((row) => {
     const [from, to] = row.querySelectorAll("select");
-    return { from: from.value, to: to.value };
+    // Always send an explicit boolean: null would re-trigger auto-detection at
+    // the next startup and overwrite what the user just chose.
+    return { from: from.value, to: to.value, phonetic: row.querySelector(".phonetic").checked };
   });
 }
 
@@ -189,6 +237,10 @@ function addIgnore(name) {
 
 function renderHotkey() {
   el.hotkeyDisplay.textContent = hotkeyLabel(currentHotkey, currentMods);
+  el.selectionHotkeyDisplay.textContent = hotkeyLabel(
+    currentSelectionHotkey,
+    currentSelectionMods,
+  );
 }
 
 function populate(config) {
@@ -199,7 +251,10 @@ function populate(config) {
   el.sensitivityValue.textContent = Number(config.sensitivity).toFixed(2);
   currentHotkey = config.manual_hotkey;
   currentMods = config.manual_hotkey_mods || 0;
+  currentSelectionHotkey = config.selection_hotkey || 0;
+  currentSelectionMods = config.selection_hotkey_mods || 0;
   renderHotkey();
+  el.learnOnUndo.checked = config.learn_on_undo !== false;
   el.ignore.value = (config.ignore_processes || []).join("\n");
 
   el.pairs.innerHTML = "";
@@ -216,6 +271,9 @@ function gather() {
     ignore_processes: ignoreList(),
     manual_hotkey: currentHotkey,
     manual_hotkey_mods: currentMods,
+    selection_hotkey: currentSelectionHotkey,
+    selection_hotkey_mods: currentSelectionMods,
+    learn_on_undo: el.learnOnUndo.checked,
   };
 }
 
@@ -257,18 +315,34 @@ function captureMods(ev) {
   return mods;
 }
 
-function startCapture() {
+// Capture a key combination for one of the hotkeys. `opts` carries the button
+// and display element to animate, the IPC command to set it, and an `onSet`
+// callback to update the matching state on success.
+function startCapture(opts) {
   if (capturing) return;
   capturing = true;
-  el.setHotkey.textContent = "Press a key…";
-  el.hotkeyDisplay.parentElement.classList.add("capturing");
+  opts.button.textContent = "Press a key…";
+  opts.display.parentElement.classList.add("capturing");
 
   const finish = () => {
+    clearTimeout(timeout);
     window.removeEventListener("keydown", handler, true);
     capturing = false;
-    el.setHotkey.textContent = "Set hotkey";
-    el.hotkeyDisplay.parentElement.classList.remove("capturing");
+    opts.button.textContent = "Set hotkey";
+    opts.display.parentElement.classList.remove("capturing");
   };
+
+  // Windows owns the reserved shortcuts (most Win+… combinations) as global
+  // hotkeys, so it consumes them before this window ever sees a keydown. Without
+  // a deadline the capture would sit in "Press a key…" forever, looking broken
+  // rather than explaining itself.
+  const timeout = setTimeout(() => {
+    finish();
+    showError(
+      "Didn't see that key — Windows reserves some combinations (most Win+… ones) " +
+        "and never passes them on. Try Ctrl+Shift+…, Win+F8, or Win+Insert.",
+    );
+  }, 5000);
 
   const handler = async (ev) => {
     if (ev.key === "Escape") {
@@ -287,13 +361,14 @@ function startCapture() {
     const vk = jsToVk(ev);
     const mods = captureMods(ev);
     try {
-      await invoke("set_hotkey", { vk, mods });
-      currentHotkey = vk;
-      currentMods = mods;
+      await invoke(opts.command, { vk, mods });
+      opts.onSet(vk, mods);
       renderHotkey();
       setStatus(`Hotkey set to ${hotkeyLabel(vk, mods)}.`);
     } catch (e) {
-      setStatus(`${e}`);
+      // Rejected — the binding is unchanged, so say why prominently rather than
+      // leaving the user to wonder whether it took.
+      showError(`${hotkeyLabel(vk, mods)} can't be used. ${e}`);
     }
   };
   window.addEventListener("keydown", handler, true);
@@ -333,6 +408,64 @@ function addHistory(event) {
   while (el.history.children.length > 30) el.history.lastChild.remove();
 }
 
+// ----- Learned words ---------------------------------------------------------
+
+// The dictionary is the only typed text Palimpsest persists, so the list is
+// always fully shown and every entry is individually removable.
+async function loadWords() {
+  let words;
+  try {
+    words = await invoke("list_user_words");
+  } catch (e) {
+    setStatus(`Couldn't load learned words: ${e}`);
+    return;
+  }
+
+  el.words.innerHTML = "";
+  const entries = ["en", "de", "ru"].flatMap((lang) =>
+    (words[lang] || []).map((word) => ({ lang, word })),
+  );
+  if (entries.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.textContent = "Nothing learned yet.";
+    el.words.append(li);
+    return;
+  }
+
+  for (const { lang, word } of entries) {
+    const li = document.createElement("li");
+    const text = document.createElement("span");
+    text.className = "to";
+    text.textContent = word;
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = layoutNameForLang(lang);
+    const forget = document.createElement("button");
+    forget.className = "ghost";
+    forget.type = "button";
+    forget.textContent = "Forget";
+    forget.addEventListener("click", async () => {
+      try {
+        await invoke("forget_word", { lang, word });
+        await loadWords();
+        setStatus(`Forgot “${word}”.`);
+      } catch (e) {
+        setStatus(`Error: ${e}`);
+      }
+    });
+    li.append(text, tag, forget);
+    el.words.append(li);
+  }
+}
+
+// Language tag for a learned word. Falls back to the bare code so an unknown
+// language never renders as blank.
+function layoutNameForLang(lang) {
+  const klid = { en: "00000409", ru: "00000419", de: "00000407" }[lang];
+  return klid ? layoutName(klid) : lang;
+}
+
 // ----- Wiring ----------------------------------------------------------------
 
 function wire() {
@@ -358,7 +491,17 @@ function wire() {
 
   el.addProc.addEventListener("click", () => addIgnore(el.procList.value));
   el.refreshProc.addEventListener("click", loadProcesses);
-  el.setHotkey.addEventListener("click", startCapture);
+  el.setHotkey.addEventListener("click", () =>
+    startCapture({
+      button: el.setHotkey,
+      display: el.hotkeyDisplay,
+      command: "set_hotkey",
+      onSet: (vk, mods) => {
+        currentHotkey = vk;
+        currentMods = mods;
+      },
+    }),
+  );
   el.clearHotkey.addEventListener("click", async () => {
     try {
       await invoke("clear_hotkey");
@@ -366,6 +509,29 @@ function wire() {
       currentMods = 0;
       renderHotkey();
       setStatus("Hotkey cleared.");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  });
+
+  el.setSelectionHotkey.addEventListener("click", () =>
+    startCapture({
+      button: el.setSelectionHotkey,
+      display: el.selectionHotkeyDisplay,
+      command: "set_selection_hotkey",
+      onSet: (vk, mods) => {
+        currentSelectionHotkey = vk;
+        currentSelectionMods = mods;
+      },
+    }),
+  );
+  el.clearSelectionHotkey.addEventListener("click", async () => {
+    try {
+      await invoke("clear_selection_hotkey");
+      currentSelectionHotkey = 0;
+      currentSelectionMods = 0;
+      renderHotkey();
+      setStatus("Selection hotkey cleared.");
     } catch (e) {
       setStatus(`Error: ${e}`);
     }
@@ -398,9 +564,43 @@ function wire() {
     }
   });
 
-  // Engine pushed a correction or an undo.
+  el.learnOnUndo.addEventListener("change", apply);
+
+  el.clearWords.addEventListener("click", async () => {
+    try {
+      await invoke("clear_user_words");
+      await loadWords();
+      setStatus("Forgot every learned word.");
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+  });
+
+  el.checkUpdate.addEventListener("click", () => checkForUpdate(false));
+
+  el.installUpdate.addEventListener("click", async () => {
+    el.installUpdate.disabled = true;
+    el.updateStatus.textContent = "Downloading and installing…";
+    try {
+      await invoke("install_update");
+    } catch (e) {
+      // Success never returns — the installer needs this process gone, so the
+      // app exits mid-call. Reaching here means it failed.
+      el.installUpdate.disabled = false;
+      showError(`Update failed: ${e}`);
+    }
+  });
+
+  // Engine pushed a correction, an undo, or a word it learned from one.
   listen("engine-event", (e) => {
     const event = e.payload;
+    if (event.kind === "learned") {
+      // Learning is silent by design — no prompt steals focus mid-typing — so
+      // the list and a toast are how the user finds out it happened.
+      loadWords();
+      showToast(`Learned “${event.word}” — won't correct it again`);
+      return;
+    }
     addHistory(event);
     if (event.kind === "undone") {
       showToast(`Reverted → ${event.original}`);
@@ -427,6 +627,7 @@ async function init() {
     setStatus(`Couldn't list layouts: ${e}`);
   }
   await loadProcesses();
+  await loadWords();
   try {
     const config = await invoke("get_config");
     populate(config);
@@ -434,6 +635,48 @@ async function init() {
     setStatus("Ready.");
   } catch (e) {
     setStatus(`Failed to load: ${e}`);
+  }
+  await warnAboutHotkeyConflicts();
+  checkForUpdate(true);
+}
+
+// Ask the release feed for a newer build. `quiet` marks the automatic check when
+// the window opens: a machine that is offline or behind a proxy must not be
+// greeted with an error toast about something the user never asked for. The
+// "Check now" button passes false, because then a failure is the answer.
+async function checkForUpdate(quiet) {
+  el.updateStatus.textContent = "Checking…";
+  el.installUpdate.hidden = true;
+  try {
+    const { current, available, notes } = await invoke("check_update");
+    if (!available) {
+      el.updateStatus.textContent = `Palimpsest ${current} — up to date.`;
+      return;
+    }
+    el.updateStatus.textContent =
+      `Version ${available} is available (you have ${current}).` +
+      (notes ? ` ${notes}` : "");
+    el.installUpdate.hidden = false;
+  } catch (e) {
+    el.updateStatus.textContent = "Couldn't reach the update server.";
+    if (!quiet) showError(`Update check failed: ${e}`);
+  }
+}
+
+// A hotkey that validated when it was set can be claimed by something else
+// later. Palimpsest still fires (the hook sees keys first), but so does the
+// other owner — so surface it instead of letting the user puzzle over why
+// pressing it also does something unrelated.
+async function warnAboutHotkeyConflicts() {
+  try {
+    const conflicts = await invoke("hotkey_conflicts");
+    if (conflicts.length === 0) return;
+    const label = { manual: "Manual hotkey", selection: "Selection hotkey" };
+    showError(
+      conflicts.map((c) => `${label[c.which] || c.which}: ${c.message}`).join(" "),
+    );
+  } catch (e) {
+    setStatus(`Couldn't check hotkeys: ${e}`);
   }
 }
 

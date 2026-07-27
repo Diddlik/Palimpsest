@@ -9,8 +9,12 @@ description = "Core hook, injection, and heuristics engine for Palimpsest."
 [dependencies]
 arc-swap.workspace = true
 crossbeam-channel.workspace = true
+fst.workspace = true
 serde = { workspace = true }
 tracing.workspace = true
+
+[build-dependencies]
+fst.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows.workspace = true

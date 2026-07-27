@@ -4,7 +4,7 @@
 
 use std::path::PathBuf;
 
-use palimpsest_core::{Config, Runtime};
+use palimpsest_core::{Config, Runtime, UserWords};
 use serde::Serialize;
 use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -75,6 +75,47 @@ pub fn apply_config(app: &AppHandle, state: &AppState, config: Config) {
     let _ = state.toggle_item.set_checked(enabled);
     update_tray_tooltip(app, enabled);
     let _ = app.emit("status", StatusPayload { enabled });
+}
+
+/// Where the learned-word dictionary lives — beside the config, but in its own
+/// file: it is data the engine writes, not settings the user edits, and keeping
+/// it separate makes it trivial to inspect or delete on its own.
+fn user_words_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("user_words.json"))
+}
+
+/// Load the learned words, falling back to an empty dictionary when the file is
+/// missing or unreadable — never a reason to fail startup.
+pub fn load_user_words(app: &AppHandle) -> UserWords {
+    user_words_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the learned words. Best-effort, like [`save_config`]: a failure to
+/// write costs the user a repeated undo, not a broken session.
+pub fn save_user_words(app: &AppHandle, words: &UserWords) {
+    let Some(path) = user_words_path(app) else {
+        tracing::warn!("no config directory available; learned words not persisted");
+        return;
+    };
+    let json = match serde_json::to_string_pretty(words) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialize learned words");
+            return;
+        }
+    };
+    if let Some(dir) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            tracing::warn!(error = %e, "failed to create config directory");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::write(&path, json) {
+        tracing::warn!(error = %e, "failed to write learned words");
+    }
 }
 
 /// Reflect the on/off state in the tray tooltip.

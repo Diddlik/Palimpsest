@@ -34,24 +34,32 @@ pub struct RawKey {
 }
 
 pub mod analyze;
-pub use analyze::{analyze, suggest, Decision, Reinterpreter};
+pub use analyze::{
+    analyze, suggest, suggest_text, Decision, Reinterpreter, TextCorrection, Transliterator,
+};
 
 pub mod buffer;
 pub use buffer::{Key, WordBuffer};
 
 pub mod config;
-pub use config::{is_ignored, Config, LayoutPair};
+pub use config::{is_ignored, migrate_legacy_hotkeys, Config, LayoutPair};
 
 pub mod events;
 pub use events::{Command, CorrectionEvent, EngineEvent};
 
-pub mod phonetic;
+#[cfg(windows)]
+pub mod clipboard;
 
 #[cfg(windows)]
 pub mod context;
 
+pub mod phonetic;
+
 pub mod scoring;
 pub use scoring::{Lang, Models};
+
+pub mod user_dict;
+pub use user_dict::UserWords;
 
 #[cfg(windows)]
 pub mod engine;

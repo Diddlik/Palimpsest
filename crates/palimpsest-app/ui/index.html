@@ -74,9 +74,23 @@
             <button class="ghost" id="clear-hotkey" type="button">Clear</button>
           </div>
           <span class="hint inline">
-            Click “Set hotkey”, then press a combination (e.g. Ctrl+Shift+K) or a
-            single non-typing key (Pause, F8, Insert). Forces a fix on the current
-            word. Esc cancels.
+            Click “Set hotkey”, then press a combination (e.g. Ctrl+Shift+Space).
+            On laptops and 75% keyboards prefer a chord — keys like Pause or
+            Scroll Lock often aren't there. Forces a fix on the current word. Esc
+            cancels.
+          </span>
+        </div>
+        <div class="field">
+          <label>Convert selection hotkey</label>
+          <div class="hotkey-row">
+            <span id="selection-hotkey-display" class="hotkey-display">—</span>
+            <button class="ghost" id="set-selection-hotkey" type="button">Set hotkey</button>
+            <button class="ghost" id="clear-selection-hotkey" type="button">Clear</button>
+          </div>
+          <span class="hint inline">
+            Select any text, then press this to retype it in the other layout
+            (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+X; a modifier chord
+            works on every keyboard. Esc cancels.
           </span>
         </div>
         <label class="check">
@@ -91,11 +105,42 @@
 
       <section class="card">
         <div class="card-head">
+          <h2>Updates</h2>
+          <button class="ghost" id="check-update" type="button">Check now</button>
+        </div>
+        <p class="hint" id="update-status">Checking…</p>
+        <button class="ghost" id="install-update" type="button" hidden>
+          Install and restart
+        </button>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
           <h2>Recent corrections</h2>
           <button class="ghost" id="undo" type="button">Undo last</button>
         </div>
         <ul id="history" class="history">
           <li class="empty">Nothing yet.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Learned words</h2>
+          <button class="ghost" id="clear-words" type="button">Forget all</button>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="learn-on-undo" />
+          Learn a word when I undo its correction
+        </label>
+        <span class="hint">
+          Undoing a correction tells Palimpsest the word was right as typed, so
+          it stops correcting it. These words are the only thing Palimpsest saves
+          from what you type — stored locally in <code>user_words.json</code>,
+          never sent anywhere. Turn the setting off to save nothing at all.
+        </span>
+        <ul id="words" class="history">
+          <li class="empty">Nothing learned yet.</li>
         </ul>
       </section>
     </main>

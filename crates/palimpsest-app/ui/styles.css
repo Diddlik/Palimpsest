@@ -102,9 +102,16 @@ output {
 }
 
 /* Pairs */
-.pair { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.pair select { flex: 1; }
+.pair { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .pair .arrow { color: var(--muted); }
+
+/* A <select> is intrinsically as wide as its widest <option>, and a flex child
+   defaults to min-width:auto — so it refuses to shrink below that. Layout names
+   can be very long ("Russisch / deutsche Tastatur - RusWin.net (Russian
+   Phonetic for German keyboard)"), which is what forced the window wide. The
+   min-width:0 is the actual fix; the basis lets two selects share a narrow row
+   and wrap only when there is genuinely no space. */
+.pair select { flex: 1 1 140px; min-width: 0; }
 
 select, input[type="number"], textarea {
   background: var(--card-2);
@@ -114,15 +121,17 @@ select, input[type="number"], textarea {
   padding: 7px 9px;
   font: inherit;
 }
+/* Truncate rather than stretch. The full name stays available as a tooltip. */
+select { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 textarea { width: 100%; resize: vertical; }
 input[type="number"] { width: 90px; }
 
 /* Process picker */
-.picker-row { display: flex; gap: 8px; margin-bottom: 8px; }
-.picker-row select { flex: 1; }
+.picker-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.picker-row select { flex: 1 1 140px; min-width: 0; }
 
 /* Hotkey capture */
-.hotkey-row { display: flex; align-items: center; gap: 10px; }
+.hotkey-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .hotkey-display {
   min-width: 110px; text-align: center;
   background: var(--card-2); border: 1px solid var(--border); border-radius: 7px;
@@ -136,6 +145,9 @@ input[type="number"] { width: 90px; }
 .field label { display: block; margin-bottom: 4px; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check input { accent-color: var(--accent-bright); width: 16px; height: 16px; }
+/* Per-pair phonetic flag: sits inline in the row, so it must not stretch. */
+.check.inline { flex: 0 0 auto; font-size: 12px; color: var(--muted); gap: 4px; }
+.check.inline input { width: 13px; height: 13px; }
 
 button {
   font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid var(--border);
@@ -148,16 +160,22 @@ button.icon {
 }
 button.icon:hover { background: rgba(200,85,61,.12); }
 
-/* History */
+/* History + learned words */
 .history { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .history li {
   display: flex; align-items: center; gap: 8px;
   background: var(--card-2); border-radius: 7px; padding: 7px 10px; font-size: 13px;
 }
 .history li.empty { color: var(--muted); background: transparent; padding-left: 0; }
+/* Words can be arbitrarily long; truncate them rather than widen the window. */
+.history .from, .history .to {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .history .from { color: var(--muted); text-decoration: line-through; }
 .history .to { color: var(--accent-bright); font-weight: 600; }
-.history .tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+.history .tag { margin-left: auto; font-size: 11px; color: var(--muted); flex: 0 0 auto; }
+/* The per-word Forget button must keep its label, so it never shrinks. */
+.history button { flex: 0 0 auto; padding: 3px 9px; font-size: 12px; }
 
 /* Toast + status */
 .toast {
@@ -166,6 +184,13 @@ button.icon:hover { background: rgba(200,85,61,.12); }
   box-shadow: 0 6px 20px rgba(0,0,0,.4); transition: opacity .25s; font-size: 13px;
 }
 .toast.hidden { opacity: 0; pointer-events: none; }
+/* Failures must not look like confirmations, and need room to explain. */
+.toast.error {
+  background: var(--danger);
+  max-width: min(90vw, 460px);
+  border-radius: 12px;
+  line-height: 1.4;
+}
 .statusbar {
   height: 24px; padding: 0 20px; display: flex; align-items: center;
   font-size: 12px; color: var(--muted); border-top: 1px solid var(--border);

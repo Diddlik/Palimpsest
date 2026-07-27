@@ -18,18 +18,32 @@ use std::time::Duration;
 use arc_swap::ArcSwap;
 use crossbeam_channel::{select, Receiver, Sender};
 
-use crate::analyze::{analyze, suggest, Decision, Reinterpreter};
+use crate::analyze::{analyze, suggest, suggest_text, Decision, Reinterpreter};
 use crate::buffer::{Completed, Key, WordBuffer};
 use crate::config::{is_ignored, Config};
 use crate::context::{focused_is_password, Context};
 use crate::events::{Command, CorrectionEvent, EngineEvent};
 use crate::reinterpret::{current_layout_klid, WinReinterpreter};
-use crate::scoring::Models;
-use crate::{execute, RawKey};
+use crate::scoring::{Lang, Models};
+use crate::user_dict::UserWords;
+use crate::{clipboard, execute, inject, RawKey};
 
 /// How long to block on the channel before re-checking the stop flag. Keeps
 /// shutdown responsive without busy-waiting.
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+/// How long to keep waiting for the foreground app to service the synthetic
+/// `Ctrl+C`, and how often to re-check while waiting.
+///
+/// This used to be a single fixed 120 ms sleep, which is the wrong shape: fast
+/// apps made the user wait for nothing, and slow ones (Electron, browsers,
+/// Office, anything over RDP) simply hadn't answered yet, so the clipboard read
+/// came back empty and the conversion silently did nothing — the "press it three
+/// or four times" symptom. Polling instead returns as soon as the text lands,
+/// usually well under the old fixed delay, and tolerates a slow app.
+const SELECTION_COPY_TIMEOUT: Duration = Duration::from_millis(600);
+/// Gap between clipboard checks while waiting for the copy.
+const SELECTION_POLL_INTERVAL: Duration = Duration::from_millis(15);
 
 /// `VK_SPACE` — the only boundary we auto-correct on. After a space the caret
 /// sits right past the word+space, so the backspace count is exact. Tab/Enter
@@ -58,6 +72,45 @@ fn hotkey_matches(vk: u32, mods: u8, config: &Config) -> bool {
     config.manual_hotkey != 0
         && vk == config.manual_hotkey
         && mods == config.manual_hotkey_mods
+}
+
+/// The chord-match rule for the "convert selection" hotkey — the same exact-match
+/// semantics as [`hotkey_matches`], against [`Config::selection_hotkey`]. A value
+/// of `0` disables it.
+fn selection_hotkey_matches(vk: u32, mods: u8, config: &Config) -> bool {
+    config.selection_hotkey != 0
+        && vk == config.selection_hotkey
+        && mods == config.selection_hotkey_mods
+}
+
+/// Wait for the synthetic `Ctrl+C` to land, returning the copied text.
+///
+/// The clipboard was emptied first, so the first non-empty read *is* the
+/// selection — no need to compare against previous contents. Returns `None` if
+/// nothing arrives within [`SELECTION_COPY_TIMEOUT`], which means either that
+/// nothing was selected or that the app never serviced the copy; both are
+/// treated the same way, as a harmless no-op.
+fn await_selection() -> Option<String> {
+    let deadline = std::time::Instant::now() + SELECTION_COPY_TIMEOUT;
+    loop {
+        if let Some(text) = clipboard::get_text() {
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(SELECTION_POLL_INTERVAL);
+    }
+}
+
+/// Put `saved` back on the clipboard after a selection conversion borrowed it.
+/// When the clipboard held no text to begin with, leave it empty.
+fn restore_clipboard(saved: Option<String>) {
+    if let Some(text) = saved {
+        let _ = clipboard::set_text(&text);
+    }
 }
 
 /// The last word finished with a space, kept so the manual hotkey can still fix
@@ -97,11 +150,15 @@ struct Engine {
 }
 
 impl Engine {
-    fn new(config: Arc<ArcSwap<Config>>, events: Sender<EngineEvent>) -> Self {
+    fn new(
+        config: Arc<ArcSwap<Config>>,
+        user_words: Arc<ArcSwap<UserWords>>,
+        events: Sender<EngineEvent>,
+    ) -> Self {
         Self {
             config,
             buffer: WordBuffer::new(),
-            models: Models::builtin(),
+            models: Models::with_user_words(user_words),
             reinterp: WinReinterpreter::new(),
             context: Context::new(),
             last: None,
@@ -154,6 +211,10 @@ impl Engine {
             self.on_manual(&config);
             return; // the hotkey itself is not part of any word
         }
+        if selection_hotkey_matches(key.vk, self.mods, &config) {
+            self.on_convert_selection(&config);
+            return; // the hotkey itself is not part of any word
+        }
         if let Some(done) = self.buffer.push(key) {
             self.on_word(done, &config);
         }
@@ -204,6 +265,9 @@ impl Engine {
             tracing::debug!(%reason, "manual correction suppressed by context");
             return;
         }
+        // The chord that triggered us is still physically held; drop its
+        // modifiers so the injected backspaces don't run as Ctrl+Backspace etc.
+        inject::release_modifiers(self.mods);
         let current = current_layout_klid();
         if !self.buffer.is_empty() {
             let keys = self.buffer.take_current();
@@ -222,6 +286,86 @@ impl Engine {
             );
             self.run(&last.keys, &last.layout, &decision, Some(' '), true);
         }
+    }
+
+    /// Convert the user's current *selection* to the better-scoring layout: copy
+    /// it, reinterpret the characters, and type the result back in its place.
+    /// Correctly-typed selections are left untouched; the user's clipboard is
+    /// restored afterwards either way.
+    fn on_convert_selection(&mut self, config: &Config) {
+        if let Some(reason) = self.blocked(config) {
+            tracing::debug!(%reason, "selection conversion suppressed by context");
+            return;
+        }
+        // The chord that triggered us (e.g. Ctrl+Shift+X) is still physically
+        // held; release its modifiers first so the synthetic Ctrl+C actually
+        // copies (not Ctrl+Shift+C) and the replacement typing isn't swallowed as
+        // a shortcut — otherwise the selection is deleted instead of converted.
+        inject::release_modifiers(self.mods);
+        // Snapshot the clipboard, then empty it so an empty read after the copy
+        // unambiguously means "nothing was selected" (not stale contents) — which
+        // keeps an accidental press on an empty selection a harmless no-op.
+        let saved = clipboard::get_text();
+        // If the clipboard can't be emptied we cannot tell the copy's result
+        // from whatever was already there, and converting stale contents would
+        // type the wrong text over the user's selection. Abort instead.
+        if let Err(e) = clipboard::clear() {
+            tracing::warn!(error = %e, "couldn't clear the clipboard; skipping conversion");
+            return;
+        }
+        if let Err(e) = inject::copy_selection() {
+            tracing::warn!(error = %e, "failed to copy selection");
+            restore_clipboard(saved);
+            return;
+        }
+
+        let Some(selected) = await_selection() else {
+            tracing::debug!("selection conversion: nothing selected, or the app never copied");
+            restore_clipboard(saved);
+            return;
+        };
+
+        let current = current_layout_klid();
+        let outcome =
+            suggest_text(&selected, &current, &config.layout_pairs, &self.reinterp, &self.models);
+        let Some(correction) = outcome else {
+            tracing::debug!("selection left unchanged (no better layout)");
+            restore_clipboard(saved);
+            return;
+        };
+
+        // Type the converted text over the still-active selection, then switch the
+        // OS layout for continued typing. `backspaces: 0` because typing replaces
+        // the selection — there is nothing to erase first.
+        let corrected_len = correction.text.chars().count();
+        let decision = Decision::Correct {
+            backspaces: 0,
+            text: correction.text.clone(),
+            target_layout: correction.target_layout.clone(),
+        };
+        // Privacy: selected text only ever appears at DEBUG, never the default level.
+        tracing::debug!(target = %correction.target_layout, "converting selection");
+        if let Err(e) = execute::apply(&decision, None) {
+            tracing::warn!(error = %e, "selection conversion failed");
+            restore_clipboard(saved);
+            return;
+        }
+        restore_clipboard(saved);
+
+        // Make it undoable through the same path as an inline correction: undo
+        // erases the `corrected_len` characters we typed and retypes `original`.
+        self.last_correction = Some(LastCorrection {
+            original: selected.clone(),
+            corrected_len,
+            from_layout: current,
+            boundary: None,
+        });
+        let _ = self.events.send(EngineEvent::Corrected(CorrectionEvent {
+            original: selected,
+            corrected: correction.text,
+            target_layout: correction.target_layout,
+            manual: true,
+        }));
     }
 
     /// Execute a decision (no-op for `Keep`). On a correction it performs the
@@ -274,12 +418,36 @@ impl Engine {
             tracing::warn!(error = %e, "undo failed");
             return;
         }
+        self.learn_from_undo(&lc);
         let _ = self.events.send(EngineEvent::Undone(CorrectionEvent {
             original: lc.original,
             corrected: String::new(),
             target_layout: lc.from_layout,
             manual: false,
         }));
+    }
+
+    /// An undo says the word was right as typed. Remember it under the layout it
+    /// was typed in, so the same word is not corrected again. Only the text the
+    /// user *kept* is learned, never the correction they rejected — so this can
+    /// only ever suppress a future correction, never cause one.
+    fn learn_from_undo(&mut self, lc: &LastCorrection) {
+        if !self.config.load().learn_on_undo {
+            return;
+        }
+        let Some(lang) = Lang::from_klid(&lc.from_layout) else {
+            return; // unsupported layout — nothing to score it against anyway
+        };
+        if !self.models.learn(lang, &lc.original) {
+            return; // already known, or not a single learnable word
+        }
+        // Privacy: like every other path that touches typed text, the word
+        // itself is logged only at DEBUG.
+        tracing::debug!(lang = lang.code(), word = %lc.original, "learned word from undo");
+        let _ = self.events.send(EngineEvent::Learned {
+            lang: lang.code().to_string(),
+            word: lc.original.trim().to_lowercase(),
+        });
     }
 }
 
@@ -290,16 +458,19 @@ impl Engine {
 /// - `rx` — observed keystrokes from the hook.
 /// - `commands` — UI control messages (e.g. [`Command::Undo`]).
 /// - `config` — shared with the UI for live, lock-free updates.
+/// - `user_words` — the learned-word dictionary, shared with the UI so words
+///   learned here show up there and words forgotten there stop counting here.
 /// - `running` — cleared on shutdown to break the loop.
 /// - `events` — outbound channel for [`EngineEvent`]s the UI displays.
 pub fn run(
     rx: Receiver<RawKey>,
     commands: Receiver<Command>,
     config: Arc<ArcSwap<Config>>,
+    user_words: Arc<ArcSwap<UserWords>>,
     running: Arc<AtomicBool>,
     events: Sender<EngineEvent>,
 ) {
-    let mut engine = Engine::new(config, events);
+    let mut engine = Engine::new(config, user_words, events);
     while running.load(Ordering::Relaxed) {
         select! {
             recv(rx) -> msg => match msg {
@@ -356,5 +527,16 @@ mod tests {
         let cfg = config_with(0, 0); // disabled
         assert!(!hotkey_matches(0, 0, &cfg));
         assert!(!hotkey_matches(0x13, 0, &cfg));
+    }
+
+    #[test]
+    fn selection_hotkey_matches_exact_chord_and_respects_disable() {
+        let cfg = Config { selection_hotkey: 0x91, selection_hotkey_mods: 0, ..Config::default() };
+        assert!(selection_hotkey_matches(0x91, 0, &cfg)); // bare Scroll Lock
+        assert!(!selection_hotkey_matches(0x91, MOD_SHIFT, &cfg)); // a modifier held → no match
+        assert!(!selection_hotkey_matches(0x13, 0, &cfg)); // wrong key
+
+        let off = Config { selection_hotkey: 0, ..Config::default() };
+        assert!(!selection_hotkey_matches(0, 0, &off));
     }
 }

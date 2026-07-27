@@ -32,6 +32,15 @@ pub enum EngineEvent {
     Corrected(CorrectionEvent),
     /// The most recent correction was reverted.
     Undone(CorrectionEvent),
+    /// An undo taught Palimpsest that a word was right as typed, so it was added
+    /// to the user dictionary. The UI surfaces this (it is the only path that
+    /// persists typed text) and the app persists the dictionary on receipt.
+    Learned {
+        /// Language the word was learned for — a [`crate::Lang::code`] value.
+        lang: String,
+        /// The word, as stored: trimmed and lowercased.
+        word: String,
+    },
 }
 
 /// A control message from the UI to the engine.

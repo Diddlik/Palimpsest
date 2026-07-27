@@ -1,8 +1,10 @@
-//! Scoring — per-language character bigram models (the MVP heuristic).
+//! Scoring — per-language frequency wordlists over character bigram models.
 //!
-//! Each language has a model trained on a small embedded corpus. To judge a
-//! word we compute its mean per-bigram log-probability under a language's model;
-//! a real word in that language scores high, gibberish scores low. The decision
+//! To judge a word we compute its mean per-bigram log-probability under a
+//! language's model; a real word in that language scores high, gibberish scores
+//! low. On top of that, a word found in the language's frequency wordlist earns
+//! a flat bonus — a dictionary hit is far stronger evidence than any n-gram,
+//! because wrong-layout text essentially never spells a real word. The decision
 //! layer ([`crate::analyze`]) reinterprets a word under each candidate layout
 //! and compares these scores.
 //!
@@ -11,11 +13,16 @@
 //! very low log-probability. That makes "this Latin gibberish is actually
 //! Russian" fall out of the same comparison naturally.
 //!
-//! `fst` wordlists (plan step 2) can later refine the score; this module's
-//! public surface (`Models::score`) is the seam they'd plug into.
+//! The wordlists live as plain text under `wordlists/` and are compiled to
+//! finite state transducers by `build.rs`; see there for the pipeline.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use arc_swap::ArcSwap;
+use fst::Set;
+
+use crate::user_dict::UserWords;
 use crate::Config;
 
 /// Languages Palimpsest can score. Alphabetic pairs only for v1 (no CJK IMEs).
@@ -38,6 +45,16 @@ impl Lang {
             _ => None,
         }
     }
+
+    /// Short stable identifier, used as the key in the persisted user dictionary
+    /// and in the events the UI displays.
+    pub fn code(self) -> &'static str {
+        match self {
+            Lang::En => "en",
+            Lang::Ru => "ru",
+            Lang::De => "de",
+        }
+    }
 }
 
 /// Log-probability charged for a bigram touching an out-of-vocabulary character.
@@ -48,6 +65,18 @@ const OOV_LOG_PROB: f64 = -16.118_095_650_958_2;
 /// Laplace (add-k) smoothing constant for in-vocabulary bigrams.
 const ALPHA: f64 = 0.5;
 
+/// Score added when a word is present in its language's frequency wordlist.
+/// Comfortably above the largest correction margin in [`crate::analyze`], so a
+/// dictionary hit decides the comparison — but finite, so that when *both*
+/// interpretations are real words the bonus cancels and the bigram models still
+/// choose between them.
+const DICT_BONUS: f64 = 3.0;
+
+/// Shortest word eligible for [`DICT_BONUS`]. Two-letter words are where an
+/// accidental cross-layout collision with a real word is most likely, and the
+/// class is small enough that skipping it costs almost no recall.
+const MIN_DICT_LEN: usize = 3;
+
 /// A character bigram language model with add-k smoothing.
 #[derive(Debug)]
 pub struct NgramModel {
@@ -57,18 +86,20 @@ pub struct NgramModel {
 }
 
 impl NgramModel {
-    /// Train on `corpus`. Text is lowercased; words are streamed with the spaces
-    /// already present in the corpus so word-boundary bigrams are learned.
-    pub fn train(corpus: &str) -> Self {
+    /// Train on `words`, counted as one space-separated stream so that the
+    /// word-boundary bigrams match the padding [`NgramModel::score`] applies.
+    pub fn train(words: impl Iterator<Item = String>) -> Self {
         let mut unigram: HashMap<char, u64> = HashMap::new();
         let mut bigram: HashMap<(char, char), u64> = HashMap::new();
-        let normalized: Vec<char> = corpus.to_lowercase().chars().collect();
 
-        for &c in &normalized {
-            *unigram.entry(c).or_insert(0) += 1;
-        }
-        for pair in normalized.windows(2) {
-            *bigram.entry((pair[0], pair[1])).or_insert(0) += 1;
+        let mut prev = ' ';
+        *unigram.entry(' ').or_insert(0) += 1;
+        for word in words {
+            for c in word.to_lowercase().chars().chain([' ']) {
+                *unigram.entry(c).or_insert(0) += 1;
+                *bigram.entry((prev, c)).or_insert(0) += 1;
+                prev = c;
+            }
         }
 
         let vocab_size = unigram.len();
@@ -102,31 +133,119 @@ impl NgramModel {
     }
 }
 
+/// One language's evidence: the bigram model plus its frequency wordlist.
+struct LangModel {
+    ngram: NgramModel,
+    dict: Set<&'static [u8]>,
+}
+
+impl LangModel {
+    /// Build both halves from the one embedded wordlist: the FST is the
+    /// dictionary, and streaming its keys trains the bigram fallback.
+    fn new(fst: &'static [u8]) -> Self {
+        let dict = Set::new(fst).expect("valid embedded fst");
+        let mut words = Vec::with_capacity(dict.len());
+        let mut stream = dict.stream();
+        while let Some(key) = fst::Streamer::next(&mut stream) {
+            words.push(String::from_utf8(key.to_vec()).expect("wordlist is utf-8"));
+        }
+        Self { ngram: NgramModel::train(words.into_iter()), dict }
+    }
+
+    /// Whether the built-in wordlist vouches for `word` (already normalized).
+    fn knows(&self, word: &str) -> bool {
+        word.chars().count() >= MIN_DICT_LEN && self.dict.contains(word)
+    }
+}
+
+// Hand-written so `{:?}` reports the wordlist size instead of dumping every
+// word in it.
+impl std::fmt::Debug for LangModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LangModel").field("words", &self.dict.len()).finish()
+    }
+}
+
 /// The set of trained language models, built once and shared (cheap to keep in
 /// an `Arc`). Construct with [`Models::builtin`].
 #[derive(Debug)]
 pub struct Models {
-    en: NgramModel,
-    ru: NgramModel,
-    de: NgramModel,
+    en: LangModel,
+    ru: LangModel,
+    de: LangModel,
+    /// Words the user taught us by undoing a correction. Shared with the UI,
+    /// which can list and forget them, so it is read through an `ArcSwap`
+    /// rather than owned outright.
+    user: Arc<ArcSwap<UserWords>>,
 }
 
 impl Models {
-    /// Train every language model from its embedded corpus.
+    /// Build every language model from its embedded wordlist — the same list
+    /// backing both the dictionary lookup and the bigram fallback — with an
+    /// empty user dictionary.
     pub fn builtin() -> Self {
+        Self::with_user_words(Arc::new(ArcSwap::from_pointee(UserWords::default())))
+    }
+
+    /// As [`Models::builtin`], but sharing an existing user dictionary so the
+    /// engine sees the UI's edits (and vice versa) without a restart.
+    pub fn with_user_words(user: Arc<ArcSwap<UserWords>>) -> Self {
         Self {
-            en: NgramModel::train(corpus::EN),
-            ru: NgramModel::train(corpus::RU),
-            de: NgramModel::train(corpus::DE),
+            en: LangModel::new(include_bytes!(concat!(env!("OUT_DIR"), "/en.fst"))),
+            ru: LangModel::new(include_bytes!(concat!(env!("OUT_DIR"), "/ru.fst"))),
+            de: LangModel::new(include_bytes!(concat!(env!("OUT_DIR"), "/de.fst"))),
+            user,
         }
     }
 
-    /// Score `text` under `lang`'s model (mean per-bigram log-probability).
+    /// Score `text` under `lang` — mean per-bigram log-probability, plus
+    /// [`DICT_BONUS`] when either the built-in wordlist or the user's own
+    /// dictionary vouches for the word.
     pub fn score(&self, lang: Lang, text: &str) -> f64 {
-        self.model(lang).score(text)
+        let word = text.to_lowercase();
+        let model = self.model(lang);
+        let ngram = model.ngram.score(&word);
+        // The user's own words carry no length floor: unlike a frequency list
+        // they cannot collide by accident, because the user put them there.
+        if model.knows(&word) || self.user.load().contains(lang, &word) {
+            ngram + DICT_BONUS
+        } else {
+            ngram
+        }
     }
 
-    fn model(&self, lang: Lang) -> &NgramModel {
+    /// Whether `text` is a real word of `lang` — in the built-in wordlist or the
+    /// user's own. This is the primary signal on the phonetic path, where a
+    /// romanization is always phonotactically plausible and only "is it a word"
+    /// separates the readings.
+    pub fn is_word(&self, lang: Lang, text: &str) -> bool {
+        let word = text.to_lowercase();
+        self.model(lang).knows(&word) || self.user.load().contains(lang, &word)
+    }
+
+    /// Whether the *user* has vouched for `word` in `lang` (as opposed to the
+    /// built-in wordlist). [`crate::analyze::analyze`] treats this as a veto on
+    /// automatic correction rather than merely as evidence: a flat score bonus
+    /// cannot outweigh a wide margin like `ghbdtn` → `привет`, and "I already
+    /// told you this word is fine" has to win regardless of the statistics.
+    pub fn is_user_word(&self, lang: Lang, text: &str) -> bool {
+        self.user.load().contains(lang, &text.to_lowercase())
+    }
+
+    /// Learn `word` as a real word of `lang`, so future corrections of it are
+    /// suppressed. Returns `true` if this changed anything (the caller persists
+    /// on `true`). Safe against concurrent edits from the UI thread.
+    pub fn learn(&self, lang: Lang, word: &str) -> bool {
+        let mut changed = false;
+        self.user.rcu(|current| {
+            let mut next = (**current).clone();
+            changed = next.insert(lang, word);
+            next
+        });
+        changed
+    }
+
+    fn model(&self, lang: Lang) -> &LangModel {
         match lang {
             Lang::En => &self.en,
             Lang::Ru => &self.ru,
@@ -157,102 +276,6 @@ pub fn languages_in(config: &Config) -> Vec<Lang> {
     langs
 }
 
-/// Embedded training corpora. Rich enough to give reliable bigram statistics for
-/// common words in each language; never derived from anything the user types.
-/// Phase 6 can swap these for larger embedded tables or `fst` wordlists without
-/// touching callers.
-///
-/// Size target: ≥ 3 000 characters per language so the smoothed bigram
-/// probabilities are stable enough to separate in-language words from near-miss
-/// phonetic transliterations (e.g. English "dela" vs Russian "дела").
-mod corpus {
-    pub const EN: &str = "\
-the quick brown fox jumps over the lazy dog. hello there, how are you doing today? \
-i would like to thank everyone for their time and attention this morning. \
-we should consider whether the weather will be good enough for the trip. \
-please remember to bring your laptop, charger, and notebook to the meeting. \
-this is a simple example of common english words and ordinary sentences. \
-people often write messages to friends about work, family, food, and travel. \
-the children played outside while their parents prepared a wonderful dinner. \
-knowledge, language, and communication shape the way that humans understand things. \
-she said that the door was open and the light inside was still on. \
-they walked together down the street until they reached the corner store. \
-he looked at the screen and tried to figure out what had gone wrong again. \
-the team decided to meet on monday morning before the project deadline arrived. \
-after a long day of work, he finally sat down and had a cup of coffee. \
-the report was finished on time and sent to the client without any issues. \
-students need to practice every day if they want to improve their skills. \
-the weather was cold and windy, so they decided to stay home and rest. \
-she opened the book and started reading from the first chapter carefully. \
-all the documents were signed and the deal was officially closed today. \
-he drove to the office early in the morning to avoid the traffic jam. \
-the flowers in the garden were beautiful and smelled wonderful this spring. \
-every morning she made herself a cup of tea and sat by the window reading. \
-the new software update fixed several bugs and improved overall performance. \
-they agreed to split the cost and share the responsibility equally between them. \
-the sunset over the mountains was one of the most beautiful things he had seen. \
-it is important to listen carefully before you respond or make a decision. \
-the museum was closed on monday so they decided to visit the park instead. \
-when the rain finally stopped, they went outside and enjoyed the fresh air. \
-she sent him a long message explaining everything that had happened last week. \
-the company announced a new product that would change the way people communicate. \
-he always kept his desk clean and organised so he could focus on his work.";
-
-    pub const RU: &str = "\
-привет, как дела сегодня? спасибо большое за помощь и за твоё время. \
-я хочу поблагодарить всех за внимание и за участие в нашей встрече. \
-сегодня хорошая погода, поэтому мы можем пойти гулять в парк вместе. \
-пожалуйста, не забудь взять с собой ноутбук, зарядку и тетрадь на работу. \
-это простой пример обычных русских слов и самых распространённых предложений. \
-люди часто пишут сообщения друзьям о работе, семье, еде и путешествиях. \
-дети играли на улице, пока их родители готовили вкусный и сытный ужин. \
-знание, язык и общение определяют то, как человек понимает окружающий мир. \
-она открыла дверь и увидела, что в комнате горит свет и кто-то есть дома. \
-они шли вместе по улице, разговаривая о работе и о планах на выходные. \
-он посмотрел на экран и попытался понять, что именно пошло не так сегодня. \
-команда решила собраться в понедельник утром до начала важного совещания. \
-после долгого рабочего дня он наконец сел и выпил чашку горячего чая. \
-отчёт был готов вовремя и отправлен клиенту без каких-либо задержек. \
-студентам нужно заниматься каждый день, если они хотят улучшить свои результаты. \
-погода была холодной и ветреной, поэтому они решили остаться дома и отдохнуть. \
-она открыла книгу и начала читать с самого начала очень внимательно. \
-все документы были подписаны и сделка официально закрыта сегодня вечером. \
-он приехал в офис рано утром, чтобы успеть до начала рабочего дня. \
-цветы в саду были красивыми и приятно пахли в это солнечное весеннее утро. \
-каждое утро она готовила себе чашку кофе и садилась у окна с книгой. \
-новое обновление программы исправило несколько ошибок и улучшило производительность. \
-они договорились разделить расходы и распределить обязанности поровну между собой. \
-закат над горами был одним из самых красивых зрелищ, которые он когда-либо видел. \
-важно внимательно слушать собеседника, прежде чем отвечать или принимать решение. \
-музей был закрыт в понедельник, поэтому они решили вместо этого посетить парк. \
-когда дождь наконец прекратился, они вышли на улицу и наслаждались свежим воздухом. \
-она отправила ему длинное сообщение, в котором объяснила всё, что произошло на прошлой неделе. \
-компания объявила о новом продукте, который изменит способ общения людей друг с другом. \
-он всегда держал свой стол в чистоте и порядке, чтобы лучше сосредоточиться на работе.";
-
-    pub const DE: &str = "\
-hallo, wie geht es dir heute? vielen dank für deine zeit und deine hilfe. \
-ich möchte mich bei allen für ihre aufmerksamkeit und teilnahme bedanken. \
-heute ist schönes wetter, deshalb können wir zusammen im park spazieren gehen. \
-bitte vergiss nicht, deinen laptop, das ladegerät und ein heft mitzubringen. \
-dies ist ein einfaches beispiel für gewöhnliche deutsche wörter und sätze. \
-menschen schreiben oft nachrichten an freunde über arbeit, familie und reisen. \
-die kinder spielten draußen, während ihre eltern ein leckeres abendessen kochten. \
-wissen, sprache und kommunikation prägen das verständnis der menschen. \
-sie öffnete die tür und sah, dass das licht im zimmer noch an war. \
-sie gingen gemeinsam die straße entlang und unterhielten sich über ihre pläne. \
-er schaute auf den bildschirm und versuchte herauszufinden, was schief gelaufen war. \
-das team beschloss, sich montagmorgen vor der wichtigen besprechung zu treffen. \
-nach einem langen arbeitstag setzte er sich endlich hin und trank einen kaffee. \
-der bericht war rechtzeitig fertig und wurde ohne verzögerung an den kunden geschickt. \
-studenten müssen jeden tag üben, wenn sie ihre leistungen verbessern wollen. \
-das wetter war kalt und windig, deshalb entschlossen sie sich, zu hause zu bleiben. \
-sie öffnete das buch und begann von anfang an sehr aufmerksam zu lesen. \
-alle unterlagen wurden unterschrieben und das geschäft wurde heute abend offiziell abgeschlossen. \
-er fuhr früh morgens ins büro, um vor dem arbeitsbeginn dort zu sein. \
-die blumen im garten waren wunderschön und dufteten herrlich an diesem frühlingstag.";
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +302,33 @@ mod tests {
         let m = Models::builtin();
         // Cyrillic under the English model is all out-of-vocabulary.
         assert!(m.score(Lang::En, "привет") <= OOV_LOG_PROB + 1e-9);
+    }
+
+    #[test]
+    fn wordlist_hit_beats_a_merely_plausible_nonword() {
+        let m = Models::builtin();
+        // "hello" is in the wordlist; "hellu" is bigram-plausible but is not.
+        assert!(m.score(Lang::En, "hello") - m.score(Lang::En, "hellu") > 1.0);
+        assert!(m.score(Lang::De, "wetter") - m.score(Lang::De, "wetteru") > 1.0);
+        assert!(m.score(Lang::Ru, "спасибо") - m.score(Lang::Ru, "спасибу") > 1.0);
+    }
+
+    #[test]
+    fn wordlists_cover_words_the_tiny_corpora_never_saw() {
+        let m = Models::builtin();
+        for (lang, word) in
+            [(Lang::En, "keyboard"), (Lang::De, "tastatur"), (Lang::Ru, "клавиатура")]
+        {
+            assert!(m.score(lang, word) > -6.0, "{word} should score as a real word");
+        }
+    }
+
+    #[test]
+    fn wordlist_bonus_skips_two_letter_words() {
+        let m = Models::builtin();
+        // Below MIN_DICT_LEN, so scoring falls through to the bigram model
+        // regardless of whether the wordlist happens to contain the word.
+        assert!(m.score(Lang::En, "on") < 0.0);
     }
 
     #[test]

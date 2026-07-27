@@ -32,6 +32,7 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::set_config,
@@ -44,24 +45,55 @@ fn main() {
             commands::list_layouts,
             commands::set_hotkey,
             commands::clear_hotkey,
+            commands::set_selection_hotkey,
+            commands::clear_selection_hotkey,
+            commands::hotkey_conflicts,
+            commands::list_user_words,
+            commands::forget_word,
+            commands::clear_user_words,
+            commands::check_update,
+            commands::install_update,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             let mut config = state::load_config(&handle);
+            let mut dirty = false;
+
+            // Upgrade the legacy bare Pause/Scroll Lock hotkeys (absent on 75%
+            // boards and laptops, so they silently did nothing) to Ctrl+Shift
+            // chords. Only untouched shipped defaults are migrated.
+            dirty |= palimpsest_core::migrate_legacy_hotkeys(&mut config);
 
             // Reconcile saved/default layout pairs with the layouts actually
-            // installed, so the UI never shows "(not installed)" dummy pairs;
-            // persist the result so it sticks across sessions. Skipped if the
-            // installed list can't be read, to avoid wiping real pairs.
+            // installed, so the UI never shows "(not installed)" dummy pairs.
+            // Skipped if the installed list can't be read, to avoid wiping real
+            // pairs.
             let installed = palimpsest_core::layouts::installed();
             if !installed.is_empty()
                 && palimpsest_core::layouts::sanitize_pairs(&mut config, &installed)
             {
+                dirty = true;
+            }
+
+            // Classify each pair as phonetic or positional once, by fingerprinting
+            // the layouts through `ToUnicodeEx`. Phonetic input (`privet` for
+            // привет) is legal-looking Latin, so it needs the wordlist-primary
+            // decision path rather than the bigram margin.
+            let reinterp = palimpsest_core::reinterpret::WinReinterpreter::new();
+            dirty |= palimpsest_core::phonetic::classify_pairs(&mut config.layout_pairs, &reinterp);
+
+            // Persist once if either step changed anything, so it sticks across
+            // sessions.
+            if dirty {
                 state::save_config(&handle, &config);
             }
 
             let enabled = config.enabled;
             let runtime = Runtime::start(config);
+
+            // Install the words the user has taught us in past sessions, so the
+            // engine stops correcting them from the first keystroke.
+            runtime.set_user_words(state::load_user_words(&handle));
 
             // Drain engine events on a background thread and relay them to the
             // settings window. The loop ends when the runtime (and its sender)
@@ -70,6 +102,18 @@ fn main() {
             let event_handle = handle.clone();
             std::thread::spawn(move || {
                 while let Ok(event) = events.recv() {
+                    // A word learned from an undo has only been stored in memory;
+                    // persist the dictionary before the UI hears about it.
+                    if matches!(event, palimpsest_core::EngineEvent::Learned { .. }) {
+                        if let Some(app_state) =
+                            event_handle.try_state::<AppState>().as_deref()
+                        {
+                            state::save_user_words(
+                                &event_handle,
+                                &app_state.runtime.user_words(),
+                            );
+                        }
+                    }
                     let _ = event_handle.emit("engine-event", event);
                 }
             });

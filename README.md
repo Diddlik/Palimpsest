@@ -113,6 +113,8 @@ Implemented:
 - Serializable configuration persisted to `%APPDATA%`, applied live (no restart).
 - File diagnostics logging (never containing typed text at the default level),
   a crash/panic hook, and an NSIS per-user installer.
+- Signed in-app updates (Settings → Updates) fed by a tag-driven GitHub Actions
+  release build.
 
 Remaining before a public release (human-gated):
 
@@ -128,6 +130,10 @@ Palimpsest is intended to be local-only:
 - Raw keystrokes should not be written to disk in normal operation.
 - The word buffer should be short-lived and in memory only.
 - Diagnostics should avoid logging typed content by default.
+- The only network request is the update check: a plain fetch of the release
+  feed, with no identifiers and no telemetry. Update packages are verified
+  against a signing key built into the app, so a compromised download host
+  cannot ship code.
 
 Because Palimpsest uses a global keyboard hook and synthesizes input, antivirus
 and SmartScreen warnings are a real distribution concern. A credible release
@@ -193,6 +199,18 @@ cd crates/palimpsest-app
 cargo tauri build
 # → target/release/bundle/nsis/Palimpsest_<version>_x64-setup.exe
 ```
+
+Releases are built by GitHub Actions from a tag. Bump the version in `Cargo.toml`
+and `crates/palimpsest-app/tauri.conf.json` (the workflow refuses a tag that
+disagrees with either), then:
+
+```powershell
+git tag v0.3.0
+git push origin main v0.3.0
+```
+
+That publishes the installer and the signed `latest.json` feed the in-app updater
+reads.
 
 Interactive spikes for the core, run manually from a local Windows session
 (they observe or inject into the focused window):
@@ -296,6 +314,8 @@ Palimpsest отличал собственные нажатия от польз�
 - Сериализуемая конфигурация в `%APPDATA%`, применяется на лету (без рестарта).
 - Логи диагностики (без набранного текста на уровне по умолчанию), panic hook и
   per-user installer NSIS.
+- Подписанное автообновление внутри приложения (Настройки → Updates), которое
+  питается сборкой по тегу в GitHub Actions.
 
 Осталось до публичного релиза (требует человека):
 
@@ -311,6 +331,10 @@ Palimpsest задуман как полностью локальная прог�
 - Raw keystrokes не должны записываться на диск в обычном режиме.
 - Буфер слова должен быть коротким и храниться только в памяти.
 - Диагностические логи по умолчанию не должны содержать набранный текст.
+- Единственный сетевой запрос — проверка обновлений: обычная загрузка ленты
+  релизов, без идентификаторов и телеметрии. Пакет обновления проверяется по
+  ключу подписи, вшитому в приложение, поэтому взломанный хост загрузок не
+  сможет подсунуть свой код.
 
 Так как программа использует глобальный keyboard hook и синтетический ввод,
 антивирусы и SmartScreen могут воспринимать ее подозрительно. Для нормального
@@ -376,6 +400,18 @@ cd crates/palimpsest-app
 cargo tauri build
 # → target/release/bundle/nsis/Palimpsest_<version>_x64-setup.exe
 ```
+
+Релизы собирает GitHub Actions по тегу. Поднимите версию в `Cargo.toml` и
+`crates/palimpsest-app/tauri.conf.json` (workflow не примет тег, который
+расходится с ними), затем:
+
+```powershell
+git tag v0.3.0
+git push origin main v0.3.0
+```
+
+Это опубликует installer и подписанную ленту `latest.json`, которую читает
+встроенное автообновление.
 
 Интерактивные spikes для ядра — запускать вручную в локальной Windows-сессии
 (они наблюдают или вводят данные в активное окно):
