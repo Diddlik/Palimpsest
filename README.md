@@ -9,6 +9,7 @@ The idea is similar to tools such as Punto Switcher, Mahou, and Caramba
 Switcher, but this project is built as a local, Rust-based utility with a strong
 focus on low-latency keyboard handling, privacy, and predictable correction
 behavior.
+<img width="1164" height="1383" alt="image" src="https://github.com/user-attachments/assets/3b03aff8-de1e-4027-a0a9-8a1531de736b" />
 
 > Development status: feature-complete preview, pending interactive
 > verification and a signed release. The full pipeline is implemented — hook,
