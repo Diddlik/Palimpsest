@@ -24,3 +24,8 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender = "0.2"
+
+# Only for the UI-language probe (`GetUserDefaultUILanguage` in `i18n.rs`);
+# everything else OS-facing lives in palimpsest-core.
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true

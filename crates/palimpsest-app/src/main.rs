@@ -9,6 +9,7 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod commands;
+mod i18n;
 mod logging;
 mod state;
 mod tray;
@@ -43,6 +44,7 @@ fn main() {
             commands::open_logs,
             commands::list_processes,
             commands::list_layouts,
+            commands::resolved_ui_language,
             commands::set_hotkey,
             commands::clear_hotkey,
             commands::set_selection_hotkey,
@@ -89,6 +91,7 @@ fn main() {
             }
 
             let enabled = config.enabled;
+            let lang = config.ui_language;
             let runtime = Runtime::start(config);
 
             // Install the words the user has taught us in past sessions, so the
@@ -118,8 +121,8 @@ fn main() {
                 }
             });
 
-            let toggle_item = tray::build(&handle, enabled)?;
-            app.manage(AppState { runtime, toggle_item });
+            let tray = tray::build(&handle, enabled, lang)?;
+            app.manage(AppState { runtime, tray });
             Ok(())
         })
         .on_window_event(|window, event| {

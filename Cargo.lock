@@ -2479,7 +2479,7 @@ dependencies = [
 
 [[package]]
 name = "palimpsest-app"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "palimpsest-core",
  "serde",
@@ -2492,11 +2492,12 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "windows 0.58.0",
 ]
 
 [[package]]
 name = "palimpsest-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "arc-swap",
  "crossbeam-channel",

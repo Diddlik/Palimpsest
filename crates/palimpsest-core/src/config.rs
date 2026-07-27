@@ -43,6 +43,42 @@ impl LayoutPair {
     }
 }
 
+/// Language of the user-facing surfaces — settings window and tray menu. This is
+/// purely presentational: it never affects which languages the *scorer* knows
+/// (that follows the layout pairs, see [`crate::scoring::Lang`]).
+///
+/// [`UiLang::System`] is the default and follows the Windows UI language, so a
+/// fresh install speaks the user's language without them finding the setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiLang {
+    /// Follow the Windows UI language, falling back to English.
+    #[default]
+    System,
+    /// English.
+    En,
+    /// Russian / русский.
+    Ru,
+    /// Ukrainian / українська.
+    Uk,
+    /// German / Deutsch.
+    De,
+}
+
+impl UiLang {
+    /// Short code used by the settings UI (`"system"`, `"en"`, `"ru"`, `"uk"`,
+    /// `"de"`).
+    pub fn code(self) -> &'static str {
+        match self {
+            UiLang::System => "system",
+            UiLang::En => "en",
+            UiLang::Ru => "ru",
+            UiLang::Uk => "uk",
+            UiLang::De => "de",
+        }
+    }
+}
+
 /// Modifier bit flags for [`Config::manual_hotkey_mods`]. The values match the
 /// Win32 `MOD_*` constants, so the bitmask passes straight to `RegisterHotKey`
 /// when the UI probes whether a chord is already taken.
@@ -113,6 +149,11 @@ pub struct Config {
     /// absolute at the cost of repeating the same undo.
     #[serde(default = "default_true")]
     pub learn_on_undo: bool,
+    /// Language the settings window and tray menu are shown in. Defaults to
+    /// [`UiLang::System`] — follow Windows — so the app is readable out of the
+    /// box; the user can pin a language in Settings.
+    #[serde(default)]
+    pub ui_language: UiLang,
 }
 
 /// serde default for [`Config::learn_on_undo`] — a missing field means "on",
@@ -137,6 +178,7 @@ impl Default for Config {
             selection_hotkey: 0x77, // VK_F8 — with Ctrl+Shift below: Ctrl+Shift+F8
             selection_hotkey_mods: MOD_CONTROL | MOD_SHIFT,
             learn_on_undo: true,
+            ui_language: UiLang::System,
         }
     }
 }
@@ -278,5 +320,16 @@ mod tests {
         assert_eq!(c.layout_pairs, Config::default().layout_pairs);
         // A config written before chord support has no modifiers (bare key).
         assert_eq!(c.manual_hotkey_mods, 0);
+        // ...and one written before UI languages follows the system.
+        assert_eq!(c.ui_language, UiLang::System);
+    }
+
+    #[test]
+    fn ui_language_round_trips_by_code() {
+        for lang in [UiLang::System, UiLang::En, UiLang::Ru, UiLang::Uk, UiLang::De] {
+            let json = serde_json::to_string(&lang).unwrap();
+            assert_eq!(json, format!("\"{}\"", lang.code()));
+            assert_eq!(serde_json::from_str::<UiLang>(&json).unwrap(), lang);
+        }
     }
 }

@@ -4,19 +4,21 @@
 
 use std::path::PathBuf;
 
-use palimpsest_core::{Config, Runtime, UserWords};
+use palimpsest_core::{Config, Runtime, UiLang, UserWords};
 use serde::Serialize;
-use tauri::menu::CheckMenuItem;
-use tauri::{AppHandle, Emitter, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager};
+
+use crate::tray::TrayMenu;
 
 /// State managed by Tauri and shared across commands and tray handlers.
 pub struct AppState {
     /// The running core (hook + engine): holds the live config and the control
     /// surface (`set_config`, `undo`, event stream).
     pub runtime: Runtime,
-    /// The tray's "Enabled" check item, retained so a toggle from any source
-    /// (tray click, menu, settings window) keeps every surface in sync.
-    pub toggle_item: CheckMenuItem<Wry>,
+    /// The tray menu, retained so a toggle from any source (tray click, menu,
+    /// settings window) keeps every surface in sync — and so a language change
+    /// can relabel it without a restart.
+    pub tray: TrayMenu,
 }
 
 /// Status pushed to the settings window so its controls reflect the live state.
@@ -70,10 +72,12 @@ pub fn save_config(app: &AppHandle, config: &Config) {
 /// and notify the settings window. The single choke point so nothing drifts.
 pub fn apply_config(app: &AppHandle, state: &AppState, config: Config) {
     let enabled = config.enabled;
+    let lang = config.ui_language;
     state.runtime.set_config(config.clone());
     save_config(app, &config);
-    let _ = state.toggle_item.set_checked(enabled);
-    update_tray_tooltip(app, enabled);
+    let _ = state.tray.toggle.set_checked(enabled);
+    crate::tray::retranslate(&state.tray, lang);
+    update_tray_tooltip(app, enabled, lang);
     let _ = app.emit("status", StatusPayload { enabled });
 }
 
@@ -118,10 +122,11 @@ pub fn save_user_words(app: &AppHandle, words: &UserWords) {
     }
 }
 
-/// Reflect the on/off state in the tray tooltip.
-pub fn update_tray_tooltip(app: &AppHandle, enabled: bool) {
+/// Reflect the on/off state in the tray tooltip, in the user's language.
+pub fn update_tray_tooltip(app: &AppHandle, enabled: bool, lang: UiLang) {
     if let Some(tray) = app.tray_by_id("main") {
-        let text = if enabled { "Palimpsest — on" } else { "Palimpsest — paused" };
+        let s = crate::i18n::strings(lang);
+        let text = if enabled { s.tooltip_on } else { s.tooltip_paused };
         let _ = tray.set_tooltip(Some(text));
     }
 }

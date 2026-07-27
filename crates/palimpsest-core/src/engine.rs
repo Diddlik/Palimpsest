@@ -85,17 +85,25 @@ fn selection_hotkey_matches(vk: u32, mods: u8, config: &Config) -> bool {
 
 /// Wait for the synthetic `Ctrl+C` to land, returning the copied text.
 ///
-/// The clipboard was emptied first, so the first non-empty read *is* the
-/// selection — no need to compare against previous contents. Returns `None` if
-/// nothing arrives within [`SELECTION_COPY_TIMEOUT`], which means either that
-/// nothing was selected or that the app never serviced the copy; both are
-/// treated the same way, as a harmless no-op.
-fn await_selection() -> Option<String> {
+/// `before` is the clipboard sequence number taken just before the copy was
+/// sent; a change means somebody published something, which — right after our
+/// own `Ctrl+C` — is the selection. Watching the counter instead of reading the
+/// clipboard matters: the counter takes no lock, whereas polling `get_text` meant
+/// hammering `OpenClipboard` every few milliseconds against the very app that was
+/// trying to publish the copy. That contention denied us the lock
+/// (`ERROR_ACCESS_DENIED`) and left the foreground app visibly frozen.
+///
+/// Returns `None` if nothing arrives within [`SELECTION_COPY_TIMEOUT`], meaning
+/// either that nothing was selected or that the app never serviced the copy —
+/// both harmless no-ops, and both leaving the clipboard untouched.
+fn await_selection(before: u32) -> Option<String> {
     let deadline = std::time::Instant::now() + SELECTION_COPY_TIMEOUT;
     loop {
-        if let Some(text) = clipboard::get_text() {
-            if !text.is_empty() {
-                return Some(text);
+        if clipboard::sequence() != before {
+            if let Some(text) = clipboard::get_text() {
+                if !text.is_empty() {
+                    return Some(text);
+                }
             }
         }
         if std::time::Instant::now() >= deadline {
@@ -107,9 +115,15 @@ fn await_selection() -> Option<String> {
 
 /// Put `saved` back on the clipboard after a selection conversion borrowed it.
 /// When the clipboard held no text to begin with, leave it empty.
+///
+/// A failure here is not cosmetic — we emptied the clipboard on the way in, so
+/// losing the restore loses the user's data. It is logged rather than swallowed,
+/// which is how the NULL-owner `SetClipboardData` bug stayed invisible.
 fn restore_clipboard(saved: Option<String>) {
     if let Some(text) = saved {
-        let _ = clipboard::set_text(&text);
+        if let Err(e) = clipboard::set_text(&text) {
+            tracing::warn!(error = %e, "couldn't restore the clipboard after a selection conversion");
+        }
     }
 }
 
@@ -288,13 +302,21 @@ impl Engine {
         }
     }
 
-    /// Convert the user's current *selection* to the better-scoring layout: copy
-    /// it, reinterpret the characters, and type the result back in its place.
-    /// Correctly-typed selections are left untouched; the user's clipboard is
-    /// restored afterwards either way.
+    /// Convert the user's current *selection* to the other layout: copy it,
+    /// reinterpret the characters, and type the result back in its place. Unlike
+    /// automatic correction this never declines (see [`suggest_text`]).
+    ///
+    /// The clipboard is borrowed, not seized: everything up to the copy is
+    /// read-only, so every early exit leaves it exactly as it was. Only a
+    /// conversion that actually happened has anything to restore.
     fn on_convert_selection(&mut self, config: &Config) {
+        // The four ways this can end without visibly doing anything all log at
+        // INFO, not DEBUG. "I pressed the hotkey and nothing happened" is the
+        // hardest report to act on, and none of these lines carries typed text —
+        // only a reason, an exe name, or a KLID — so they cost the user no
+        // privacy at the default level. The text itself stays at DEBUG.
         if let Some(reason) = self.blocked(config) {
-            tracing::debug!(%reason, "selection conversion suppressed by context");
+            tracing::info!(%reason, "selection conversion suppressed by context");
             return;
         }
         // The chord that triggered us (e.g. Ctrl+Shift+X) is still physically
@@ -302,34 +324,26 @@ impl Engine {
         // copies (not Ctrl+Shift+C) and the replacement typing isn't swallowed as
         // a shortcut — otherwise the selection is deleted instead of converted.
         inject::release_modifiers(self.mods);
-        // Snapshot the clipboard, then empty it so an empty read after the copy
-        // unambiguously means "nothing was selected" (not stale contents) — which
-        // keeps an accidental press on an empty selection a harmless no-op.
+        // Snapshot what the user had, and note the clipboard's change counter so
+        // we can recognise the copy landing without emptying anything first.
         let saved = clipboard::get_text();
-        // If the clipboard can't be emptied we cannot tell the copy's result
-        // from whatever was already there, and converting stale contents would
-        // type the wrong text over the user's selection. Abort instead.
-        if let Err(e) = clipboard::clear() {
-            tracing::warn!(error = %e, "couldn't clear the clipboard; skipping conversion");
-            return;
-        }
+        let before = clipboard::sequence();
         if let Err(e) = inject::copy_selection() {
             tracing::warn!(error = %e, "failed to copy selection");
-            restore_clipboard(saved);
-            return;
+            return; // nothing was written yet — nothing to restore
         }
 
-        let Some(selected) = await_selection() else {
-            tracing::debug!("selection conversion: nothing selected, or the app never copied");
-            restore_clipboard(saved);
-            return;
+        let Some(selected) = await_selection(before) else {
+            tracing::info!("selection conversion: nothing selected, or the app never copied");
+            return; // the clipboard is untouched, so leave it alone
         };
 
+        // `current` is only the layout undo has to restore — the conversion
+        // itself deliberately does not depend on it (see `suggest_text`).
         let current = current_layout_klid();
-        let outcome =
-            suggest_text(&selected, &current, &config.layout_pairs, &self.reinterp, &self.models);
+        let outcome = suggest_text(&selected, &config.layout_pairs, &self.reinterp, &self.models);
         let Some(correction) = outcome else {
-            tracing::debug!("selection left unchanged (no better layout)");
+            tracing::info!("selection left unchanged (no configured pair renders it differently)");
             restore_clipboard(saved);
             return;
         };
@@ -344,7 +358,7 @@ impl Engine {
             target_layout: correction.target_layout.clone(),
         };
         // Privacy: selected text only ever appears at DEBUG, never the default level.
-        tracing::debug!(target = %correction.target_layout, "converting selection");
+        tracing::info!(target = %correction.target_layout, "converting selection");
         if let Err(e) = execute::apply(&decision, None) {
             tracing::warn!(error = %e, "selection conversion failed");
             restore_clipboard(saved);

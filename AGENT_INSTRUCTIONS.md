@@ -21,7 +21,8 @@ Status: feature-complete preview. The whole pipeline is implemented — hook,
 reinterpretation, scoring, automatic correction, context awareness, Tauri
 tray/settings UI, NSIS installer. What remains is human-gated: interactive
 verification on a real desktop, code signing + AV allow-listing, and
-soak/performance runs. See `README.md` for the user-facing description and
+soak/performance runs. See `README.md` for the user-facing description (English;
+`README.ru.md` is the Russian translation, linked from the top of both) and
 `plan/PROGRESS.md` for detailed status.
 
 ## Project Structure
@@ -36,7 +37,8 @@ Rust workspace, two crates:
   them into FSTs in `OUT_DIR`, which `scoring.rs` embeds with `include_bytes!`.
   Edit the text files, never the generated FSTs. See "Scoring Data" below.
 - `crates/palimpsest-app` — Tauri 2 tray/settings app: commands, logging, state,
-  capabilities, icons, static UI under `ui/`.
+  capabilities, icons, static UI under `ui/`. User-facing text is localized —
+  see "Localization" below.
 - `crates/palimpsest-core/examples` — manual Windows spike programs
   (`spike_hook`, `spike_correct`, `spike_context`); interactive, not a substitute
   for tests.
@@ -88,6 +90,12 @@ cargo run -p palimpsest-core --example spike_hook
 cargo run -p palimpsest-core --example spike_correct  # ghbdtn -> привет in Notepad
 cargo run -p palimpsest-core --example spike_context
 ```
+
+`spike_hook` is the tool for "did the hook even see that key" — it prints `vk`,
+`scan`, `injected` and `ours` per key-down. Note that `hook::run` installs the
+hook **disarmed**; anything calling it directly must also call
+`hook::set_armed(true)` or it will observe nothing and look broken.
+`Runtime::start` does this for you.
 
 `run.cmd` is a local convenience launcher.
 
@@ -153,6 +161,69 @@ reinterpretation is merely near-plausible must come out negative (`hers` →
 measuring both directions: recall on genuine wrong-layout input, and the
 false-positive rate on correctly typed input. A missed correction is acceptable;
 a false correction is not.
+
+## Localization
+
+The UI ships in English, Russian, Ukrainian, and German. `Config::ui_language`
+(a `UiLang`) holds the choice; `UiLang::System` is the default and resolves
+through `GetUserDefaultUILanguage`, falling back to English.
+
+The strings live in two tables because they render in two places:
+
+- `crates/palimpsest-app/src/i18n.rs` — tray menu, tray tooltip, and the hotkey
+  rejection messages returned over IPC.
+- `crates/palimpsest-app/ui/i18n.js` — everything in the settings window. Markup
+  is tagged `data-i18n` / `data-i18n-html` / `data-i18n-title`; code calls
+  `t(key, vars)`. Missing keys fall back to English rather than showing the key.
+
+"System" is resolved **only** in Rust (`commands::resolved_ui_language`); the
+webview asks for the answer instead of probing the OS itself, so the window and
+the tray can never end up in different languages.
+
+Adding a language means all four of: a `UiLang` variant, a `Strings` block in
+`i18n.rs`, a table in `i18n.js`, and an `<option>` in `ui/index.html`. Never add
+a user-facing string without adding it to every table — the coverage is
+deliberate, and English-only leftovers are the usual way localization rots.
+
+This is presentation only. It has nothing to do with the languages the *scorer*
+knows (`scoring::Lang`, driven by the layout pairs and the wordlists); adding a
+UI language does not add a correction language, which needs a wordlist and the
+empirical margin checks described under "Scoring Data".
+
+## Convert Selection
+
+The selection hotkey is the one flow that leaves the keystroke pipeline: it
+snapshots the clipboard, empties it, synthesizes `Ctrl+C`, polls for the text,
+reinterprets it (`analyze::suggest_text`), types the result over the selection,
+and restores the clipboard. Three rules it has already been broken by:
+
+- **Open the clipboard with a real `HWND`, on a thread that pumps.**
+  `clipboard::owner_window` exists because `OpenClipboard(NULL)` +
+  `EmptyClipboard` sets the owner to NULL, which makes every later
+  `SetClipboardData` fail. But owning the clipboard obliges the owner window to
+  answer `WM_DESTROYCLIPBOARD`, which Windows delivers by `SendMessage` — so the
+  window gets its own pumping thread. Parking it on the engine thread froze the
+  app the user was copying in, mid-copy, while it held the clipboard lock.
+- **Never poll `OpenClipboard` in a loop.** It is one system-wide lock and the
+  foreground app needs it to publish the copy; competing for it produced
+  `ERROR_ACCESS_DENIED` storms. Watch `clipboard::sequence()`
+  (`GetClipboardSequenceNumber`, lock-free) and open only once it moves. That is
+  also why there is no `clear()`: the counter distinguishes "nothing was copied"
+  from stale contents without writing, so the read path is non-destructive and an
+  aborted conversion leaves the clipboard untouched.
+- **`suggest_text` must not depend on the active layout.** It tries both
+  directions of every configured pair. Anchoring on the live layout broke the
+  normal workflow (type it wrong, switch layout, *then* select and convert).
+- **`suggest_text` never refuses.** Scoring ranks candidates there; it does not
+  veto them. The selection hotkey is an explicit instruction, so the guardrails
+  that stop `analyze` from acting unbidden do not apply — a conversion the user
+  did not want costs one undo, whereas a hotkey that silently declines is
+  indistinguishable from a broken one. It returns `None` only for an empty
+  selection or when no pair renders the text differently. Do not "improve" this
+  by adding a plausibility check back.
+- **Its no-op paths log at INFO.** "I pressed it and nothing happened" is
+  otherwise undiagnosable. Those lines carry a reason, an exe name, or a KLID —
+  never typed text, which stays at DEBUG. Keep that split when adding paths.
 
 ## Testing
 

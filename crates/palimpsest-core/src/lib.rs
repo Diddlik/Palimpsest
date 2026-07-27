@@ -42,7 +42,7 @@ pub mod buffer;
 pub use buffer::{Key, WordBuffer};
 
 pub mod config;
-pub use config::{is_ignored, migrate_legacy_hotkeys, Config, LayoutPair};
+pub use config::{is_ignored, migrate_legacy_hotkeys, Config, LayoutPair, UiLang};
 
 pub mod events;
 pub use events::{Command, CorrectionEvent, EngineEvent};

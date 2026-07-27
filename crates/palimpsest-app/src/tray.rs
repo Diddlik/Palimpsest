@@ -1,20 +1,36 @@
 //! System tray: icon, state-reflecting tooltip, context menu, and a left-click
 //! toggle of the master switch.
 
+use palimpsest_core::UiLang;
 use tauri::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
+use crate::i18n;
 use crate::state::{self, AppState};
 
-/// Build the system tray. Returns the "Enabled" check item so the caller can
-/// store it in [`AppState`] and keep it in sync with toggles made elsewhere.
-pub fn build(app: &AppHandle, enabled: bool) -> tauri::Result<CheckMenuItem<Wry>> {
-    let toggle = CheckMenuItem::with_id(app, "toggle", "Enabled", true, enabled, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
-    let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
+/// The tray menu's items, retained after construction.
+///
+/// `toggle` keeps the check mark in step with the master switch whatever flips
+/// it; all four are held so [`retranslate`] can relabel the menu in place when
+/// the UI language changes — settings apply live, and the tray is no exception.
+pub struct TrayMenu {
+    /// The "Enabled" check item (also the master-switch mirror).
+    pub toggle: CheckMenuItem<Wry>,
+    settings: MenuItem<Wry>,
+    logs: MenuItem<Wry>,
+    quit: MenuItem<Wry>,
+}
+
+/// Build the system tray in `lang`. Returns the menu items so the caller can
+/// store them in [`AppState`].
+pub fn build(app: &AppHandle, enabled: bool, lang: UiLang) -> tauri::Result<TrayMenu> {
+    let s = i18n::strings(lang);
+    let toggle = CheckMenuItem::with_id(app, "toggle", s.tray_enabled, true, enabled, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", s.tray_settings, true, None::<&str>)?;
+    let logs = MenuItem::with_id(app, "logs", s.tray_logs, true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit Palimpsest", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", s.tray_quit, true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&toggle, &settings, &logs, &separator, &quit])?;
 
     let icon = app
@@ -24,14 +40,24 @@ pub fn build(app: &AppHandle, enabled: bool) -> tauri::Result<CheckMenuItem<Wry>
 
     TrayIconBuilder::with_id("main")
         .icon(icon)
-        .tooltip(if enabled { "Palimpsest — on" } else { "Palimpsest — paused" })
+        .tooltip(if enabled { s.tooltip_on } else { s.tooltip_paused })
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(on_menu_event)
         .on_tray_icon_event(on_tray_icon_event)
         .build(app)?;
 
-    Ok(toggle)
+    Ok(TrayMenu { toggle, settings, logs, quit })
+}
+
+/// Relabel the menu for a new UI language. Best-effort: a failed relabel leaves
+/// the previous wording, which is cosmetic, not a reason to fail a config save.
+pub fn retranslate(menu: &TrayMenu, lang: UiLang) {
+    let s = i18n::strings(lang);
+    let _ = menu.toggle.set_text(s.tray_enabled);
+    let _ = menu.settings.set_text(s.tray_settings);
+    let _ = menu.logs.set_text(s.tray_logs);
+    let _ = menu.quit.set_text(s.tray_quit);
 }
 
 fn on_menu_event(app: &AppHandle, event: MenuEvent) {

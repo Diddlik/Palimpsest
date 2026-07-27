@@ -2,6 +2,10 @@
 // bundler is required: this file is served straight from the embedded `ui/`
 // directory. It reads/writes config through IPC commands and listens for engine
 // events to drive the toast and history.
+//
+// User-facing text comes from `i18n.js` via `t()`; nothing here is hardcoded
+// English. The active locale is whatever the backend resolves `ui_language` to,
+// so this window and the tray menu always speak the same language.
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -38,6 +42,7 @@ const el = {
   procList: $("proc-list"),
   addProc: $("add-proc"),
   refreshProc: $("refresh-proc"),
+  uiLanguage: $("ui-language"),
   hotkeyDisplay: $("hotkey-display"),
   setHotkey: $("set-hotkey"),
   clearHotkey: $("clear-hotkey"),
@@ -68,12 +73,15 @@ let currentMods = 0;
 let currentSelectionHotkey = 0x91;
 let currentSelectionMods = 0;
 let capturing = false;
+// Corrections as the engine reported them, kept raw so the list can be rebuilt
+// in a new language instead of stranding old rows in the old one.
+let historyEvents = [];
 
 // Modifier bit values — must match Config::MOD_* in the core (= Win32 MOD_*).
 const MOD = { ALT: 0x1, CTRL: 0x2, SHIFT: 0x4, WIN: 0x8 };
 
 function layoutName(klid) {
-  return layoutNames[klid] || `Unknown (${klid})`;
+  return layoutNames[klid] || t("unknownLayout", { klid });
 }
 
 function vkName(vk) {
@@ -84,9 +92,11 @@ function vkName(vk) {
   return "VK 0x" + vk.toString(16).toUpperCase();
 }
 
-// Build the "Ctrl+Shift+K" label from a modifier bitmask + main key.
+// Build the "Ctrl+Shift+K" label from a modifier bitmask + main key. Modifier
+// names stay in their Windows spelling on purpose — that is what is printed on
+// the keys and what every other app calls them.
 function hotkeyLabel(vk, mods) {
-  if (!vk) return "None";
+  if (!vk) return t("none");
   const parts = [];
   if (mods & MOD.CTRL) parts.push("Ctrl");
   if (mods & MOD.SHIFT) parts.push("Shift");
@@ -119,13 +129,37 @@ function showError(text) {
   toastTimer = setTimeout(() => el.toast.classList.add("hidden"), 7000);
 }
 
+// ----- Language --------------------------------------------------------------
+
+// Ask the backend which language to render in. "system" is resolved there (from
+// the Windows UI language) rather than here, so the tray menu and this window
+// can never end up in different languages.
+async function refreshLocale() {
+  try {
+    setLocale(await invoke("resolved_ui_language"));
+  } catch (e) {
+    setStatus(t("error", { error: e }));
+  }
+  retranslate();
+}
+
+// Re-render everything that carries text: the static markup, plus the parts
+// built from data (hotkey labels, history rows, learned words).
+function retranslate() {
+  applyI18n();
+  el.enabledLabel.textContent = el.enabled.checked ? t("on") : t("paused");
+  renderHotkey();
+  renderHistory();
+  renderWords();
+}
+
 // ----- Layout pair rows ------------------------------------------------------
 
 function layoutSelect(selected) {
   const sel = document.createElement("select");
   const options = [...installedLayouts];
   if (selected && !options.some((o) => o.klid === selected)) {
-    options.push({ klid: selected, name: `${layoutName(selected)} (not installed)` });
+    options.push({ klid: selected, name: t("notInstalled", { name: layoutName(selected) }) });
   }
   for (const { klid, name } of options) {
     const opt = document.createElement("option");
@@ -164,21 +198,24 @@ function addPairRow(pair) {
   // misdetection can be corrected, since it selects the whole decision path.
   const phonetic = document.createElement("label");
   phonetic.className = "check inline";
-  phonetic.title =
-    "Each Cyrillic letter sits on its Latin sound-alike key, so wrong-layout " +
-    "text reads like “privet” rather than “ghbdtn”. Detected automatically.";
+  phonetic.dataset.i18nTitle = "phoneticHint";
+  phonetic.title = t("phoneticHint");
   const phoneticBox = document.createElement("input");
   phoneticBox.type = "checkbox";
   phoneticBox.className = "phonetic";
   phoneticBox.checked = pair ? pair.phonetic === true : false;
   phoneticBox.addEventListener("change", apply);
-  phonetic.append(phoneticBox, document.createTextNode("phonetic"));
+  const phoneticText = document.createElement("span");
+  phoneticText.dataset.i18n = "phonetic";
+  phoneticText.textContent = t("phonetic");
+  phonetic.append(phoneticBox, phoneticText);
 
   const remove = document.createElement("button");
   remove.className = "icon";
   remove.type = "button";
   remove.textContent = "✕";
-  remove.title = "Remove pair";
+  remove.dataset.i18nTitle = "removePair";
+  remove.title = t("removePair");
   remove.addEventListener("click", () => {
     row.remove();
     apply();
@@ -210,7 +247,7 @@ async function loadProcesses() {
       el.procList.appendChild(opt);
     }
   } catch (e) {
-    setStatus(`Couldn't list apps: ${e}`);
+    setStatus(t("listAppsFailed", { error: e }));
   }
 }
 
@@ -225,7 +262,7 @@ function addIgnore(name) {
   if (!name) return;
   const existing = ignoreList();
   if (existing.some((s) => s.toLowerCase() === name.toLowerCase())) {
-    setStatus(`${name} is already ignored.`);
+    setStatus(t("alreadyIgnored", { name }));
     return;
   }
   existing.push(name);
@@ -246,9 +283,10 @@ function renderHotkey() {
 function populate(config) {
   ready = false;
   el.enabled.checked = config.enabled;
-  el.enabledLabel.textContent = config.enabled ? "On" : "Paused";
+  el.enabledLabel.textContent = config.enabled ? t("on") : t("paused");
   el.sensitivity.value = config.sensitivity;
   el.sensitivityValue.textContent = Number(config.sensitivity).toFixed(2);
+  el.uiLanguage.value = config.ui_language || "system";
   currentHotkey = config.manual_hotkey;
   currentMods = config.manual_hotkey_mods || 0;
   currentSelectionHotkey = config.selection_hotkey || 0;
@@ -274,6 +312,7 @@ function gather() {
     selection_hotkey: currentSelectionHotkey,
     selection_hotkey_mods: currentSelectionMods,
     learn_on_undo: el.learnOnUndo.checked,
+    ui_language: el.uiLanguage.value,
   };
 }
 
@@ -281,9 +320,9 @@ async function apply() {
   if (!ready) return;
   try {
     await invoke("set_config", { config: gather() });
-    setStatus("Saved.");
+    setStatus(t("saved"));
   } catch (e) {
-    setStatus(`Error: ${e}`);
+    setStatus(t("error", { error: e }));
   }
 }
 
@@ -321,14 +360,14 @@ function captureMods(ev) {
 function startCapture(opts) {
   if (capturing) return;
   capturing = true;
-  opts.button.textContent = "Press a key…";
+  opts.button.textContent = t("pressKey");
   opts.display.parentElement.classList.add("capturing");
 
   const finish = () => {
     clearTimeout(timeout);
     window.removeEventListener("keydown", handler, true);
     capturing = false;
-    opts.button.textContent = "Set hotkey";
+    opts.button.textContent = t("setHotkey");
     opts.display.parentElement.classList.remove("capturing");
   };
 
@@ -338,17 +377,14 @@ function startCapture(opts) {
   // rather than explaining itself.
   const timeout = setTimeout(() => {
     finish();
-    showError(
-      "Didn't see that key — Windows reserves some combinations (most Win+… ones) " +
-        "and never passes them on. Try Ctrl+Shift+…, Win+F8, or Win+Insert.",
-    );
+    showError(t("hotkeyTimeout"));
   }, 5000);
 
   const handler = async (ev) => {
     if (ev.key === "Escape") {
       ev.preventDefault();
       finish();
-      setStatus("Hotkey unchanged.");
+      setStatus(t("hotkeyUnchanged"));
       return;
     }
     // Ignore bare modifier presses — keep waiting for the main key.
@@ -364,11 +400,12 @@ function startCapture(opts) {
       await invoke(opts.command, { vk, mods });
       opts.onSet(vk, mods);
       renderHotkey();
-      setStatus(`Hotkey set to ${hotkeyLabel(vk, mods)}.`);
+      setStatus(t("hotkeySet", { label: hotkeyLabel(vk, mods) }));
     } catch (e) {
       // Rejected — the binding is unchanged, so say why prominently rather than
-      // leaving the user to wonder whether it took.
-      showError(`${hotkeyLabel(vk, mods)} can't be used. ${e}`);
+      // leaving the user to wonder whether it took. The reason comes from the
+      // backend already translated.
+      showError(t("hotkeyRejected", { label: hotkeyLabel(vk, mods), error: e }));
     }
   };
   window.addEventListener("keydown", handler, true);
@@ -377,58 +414,76 @@ function startCapture(opts) {
 // ----- History ---------------------------------------------------------------
 
 function addHistory(event) {
-  const empty = el.history.querySelector(".empty");
-  if (empty) empty.remove();
+  historyEvents.unshift(event);
+  while (historyEvents.length > 30) historyEvents.pop();
+  renderHistory();
+}
 
-  const li = document.createElement("li");
-  if (event.kind === "undone") {
-    const restored = document.createElement("span");
-    restored.className = "to";
-    restored.textContent = event.original;
-    const note = document.createElement("span");
-    note.className = "tag";
-    note.textContent = "undone";
-    li.append(restored, note);
-  } else {
-    const from = document.createElement("span");
-    from.className = "from";
-    from.textContent = event.original;
-    const arrow = document.createElement("span");
-    arrow.textContent = "→";
-    const to = document.createElement("span");
-    to.className = "to";
-    to.textContent = event.corrected;
-    const tag = document.createElement("span");
-    tag.className = "tag";
-    tag.textContent = event.manual ? "manual" : layoutName(event.target_layout);
-    li.append(from, arrow, to, tag);
+function renderHistory() {
+  el.history.innerHTML = "";
+  if (historyEvents.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    li.dataset.i18n = "nothingYet";
+    li.textContent = t("nothingYet");
+    el.history.append(li);
+    return;
   }
 
-  el.history.prepend(li);
-  while (el.history.children.length > 30) el.history.lastChild.remove();
+  for (const event of historyEvents) {
+    const li = document.createElement("li");
+    if (event.kind === "undone") {
+      const restored = document.createElement("span");
+      restored.className = "to";
+      restored.textContent = event.original;
+      const note = document.createElement("span");
+      note.className = "tag";
+      note.textContent = t("tagUndone");
+      li.append(restored, note);
+    } else {
+      const from = document.createElement("span");
+      from.className = "from";
+      from.textContent = event.original;
+      const arrow = document.createElement("span");
+      arrow.textContent = "→";
+      const to = document.createElement("span");
+      to.className = "to";
+      to.textContent = event.corrected;
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = event.manual ? t("tagManual") : layoutName(event.target_layout);
+      li.append(from, arrow, to, tag);
+    }
+    el.history.append(li);
+  }
 }
 
 // ----- Learned words ---------------------------------------------------------
 
 // The dictionary is the only typed text Palimpsest persists, so the list is
 // always fully shown and every entry is individually removable.
+let learnedWords = {};
+
 async function loadWords() {
-  let words;
   try {
-    words = await invoke("list_user_words");
+    learnedWords = await invoke("list_user_words");
   } catch (e) {
-    setStatus(`Couldn't load learned words: ${e}`);
+    setStatus(t("loadWordsFailed", { error: e }));
     return;
   }
+  renderWords();
+}
 
+function renderWords() {
   el.words.innerHTML = "";
   const entries = ["en", "de", "ru"].flatMap((lang) =>
-    (words[lang] || []).map((word) => ({ lang, word })),
+    (learnedWords[lang] || []).map((word) => ({ lang, word })),
   );
   if (entries.length === 0) {
     const li = document.createElement("li");
     li.className = "empty";
-    li.textContent = "Nothing learned yet.";
+    li.dataset.i18n = "nothingLearned";
+    li.textContent = t("nothingLearned");
     el.words.append(li);
     return;
   }
@@ -444,14 +499,15 @@ async function loadWords() {
     const forget = document.createElement("button");
     forget.className = "ghost";
     forget.type = "button";
-    forget.textContent = "Forget";
+    forget.dataset.i18n = "forget";
+    forget.textContent = t("forget");
     forget.addEventListener("click", async () => {
       try {
         await invoke("forget_word", { lang, word });
         await loadWords();
-        setStatus(`Forgot “${word}”.`);
+        setStatus(t("forgotWord", { word }));
       } catch (e) {
-        setStatus(`Error: ${e}`);
+        setStatus(t("error", { error: e }));
       }
     });
     li.append(text, tag, forget);
@@ -471,11 +527,11 @@ function layoutNameForLang(lang) {
 function wire() {
   el.enabled.addEventListener("change", async () => {
     if (!ready) return;
-    el.enabledLabel.textContent = el.enabled.checked ? "On" : "Paused";
+    el.enabledLabel.textContent = el.enabled.checked ? t("on") : t("paused");
     try {
       await invoke("set_enabled", { enabled: el.enabled.checked });
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -491,6 +547,14 @@ function wire() {
 
   el.addProc.addEventListener("click", () => addIgnore(el.procList.value));
   el.refreshProc.addEventListener("click", loadProcesses);
+
+  // Saving first, then re-reading the resolved language, is what makes "system"
+  // work: only the backend knows what Windows reports.
+  el.uiLanguage.addEventListener("change", async () => {
+    await apply();
+    await refreshLocale();
+  });
+
   el.setHotkey.addEventListener("click", () =>
     startCapture({
       button: el.setHotkey,
@@ -508,9 +572,9 @@ function wire() {
       currentHotkey = 0;
       currentMods = 0;
       renderHotkey();
-      setStatus("Hotkey cleared.");
+      setStatus(t("hotkeyCleared"));
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -531,9 +595,9 @@ function wire() {
       currentSelectionHotkey = 0;
       currentSelectionMods = 0;
       renderHotkey();
-      setStatus("Selection hotkey cleared.");
+      setStatus(t("selectionHotkeyCleared"));
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -541,10 +605,10 @@ function wire() {
     if (!ready) return;
     try {
       await invoke("set_autostart", { enabled: el.autostart.checked });
-      setStatus(el.autostart.checked ? "Will launch at login." : "Won't launch at login.");
+      setStatus(el.autostart.checked ? t("willLaunch") : t("wontLaunch"));
     } catch (e) {
       el.autostart.checked = !el.autostart.checked; // revert on failure
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -552,7 +616,7 @@ function wire() {
     try {
       await invoke("undo");
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -560,7 +624,7 @@ function wire() {
     try {
       await invoke("open_logs");
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -570,9 +634,9 @@ function wire() {
     try {
       await invoke("clear_user_words");
       await loadWords();
-      setStatus("Forgot every learned word.");
+      setStatus(t("forgotAll"));
     } catch (e) {
-      setStatus(`Error: ${e}`);
+      setStatus(t("error", { error: e }));
     }
   });
 
@@ -580,14 +644,14 @@ function wire() {
 
   el.installUpdate.addEventListener("click", async () => {
     el.installUpdate.disabled = true;
-    el.updateStatus.textContent = "Downloading and installing…";
+    el.updateStatus.textContent = t("installing");
     try {
       await invoke("install_update");
     } catch (e) {
       // Success never returns — the installer needs this process gone, so the
       // app exits mid-call. Reaching here means it failed.
       el.installUpdate.disabled = false;
-      showError(`Update failed: ${e}`);
+      showError(t("updateFailed", { error: e }));
     }
   });
 
@@ -598,12 +662,12 @@ function wire() {
       // Learning is silent by design — no prompt steals focus mid-typing — so
       // the list and a toast are how the user finds out it happened.
       loadWords();
-      showToast(`Learned “${event.word}” — won't correct it again`);
+      showToast(t("learnedToast", { word: event.word }));
       return;
     }
     addHistory(event);
     if (event.kind === "undone") {
-      showToast(`Reverted → ${event.original}`);
+      showToast(t("revertedToast", { text: event.original }));
     } else {
       showToast(`${event.original} → ${event.corrected}`);
     }
@@ -613,18 +677,21 @@ function wire() {
   listen("status", (e) => {
     ready = false;
     el.enabled.checked = e.payload.enabled;
-    el.enabledLabel.textContent = e.payload.enabled ? "On" : "Paused";
+    el.enabledLabel.textContent = e.payload.enabled ? t("on") : t("paused");
     ready = true;
   });
 }
 
 async function init() {
+  // Language first: everything below reports through `t()`, so an error during
+  // startup must already be in the user's language.
+  await refreshLocale();
   wire();
   try {
     installedLayouts = await invoke("list_layouts");
     for (const { klid, name } of installedLayouts) layoutNames[klid] = name;
   } catch (e) {
-    setStatus(`Couldn't list layouts: ${e}`);
+    setStatus(t("listLayoutsFailed", { error: e }));
   }
   await loadProcesses();
   await loadWords();
@@ -632,9 +699,9 @@ async function init() {
     const config = await invoke("get_config");
     populate(config);
     el.autostart.checked = await invoke("get_autostart");
-    setStatus("Ready.");
+    setStatus(t("ready"));
   } catch (e) {
-    setStatus(`Failed to load: ${e}`);
+    setStatus(t("loadFailed", { error: e }));
   }
   await warnAboutHotkeyConflicts();
   checkForUpdate(true);
@@ -645,21 +712,20 @@ async function init() {
 // greeted with an error toast about something the user never asked for. The
 // "Check now" button passes false, because then a failure is the answer.
 async function checkForUpdate(quiet) {
-  el.updateStatus.textContent = "Checking…";
+  el.updateStatus.textContent = t("checking");
   el.installUpdate.hidden = true;
   try {
     const { current, available, notes } = await invoke("check_update");
     if (!available) {
-      el.updateStatus.textContent = `Palimpsest ${current} — up to date.`;
+      el.updateStatus.textContent = t("upToDate", { version: current });
       return;
     }
     el.updateStatus.textContent =
-      `Version ${available} is available (you have ${current}).` +
-      (notes ? ` ${notes}` : "");
+      t("updateAvailable", { available, current }) + (notes ? ` ${notes}` : "");
     el.installUpdate.hidden = false;
   } catch (e) {
-    el.updateStatus.textContent = "Couldn't reach the update server.";
-    if (!quiet) showError(`Update check failed: ${e}`);
+    el.updateStatus.textContent = t("updateUnreachable");
+    if (!quiet) showError(t("updateCheckFailed", { error: e }));
   }
 }
 
@@ -671,12 +737,12 @@ async function warnAboutHotkeyConflicts() {
   try {
     const conflicts = await invoke("hotkey_conflicts");
     if (conflicts.length === 0) return;
-    const label = { manual: "Manual hotkey", selection: "Selection hotkey" };
+    const label = { manual: t("conflictManual"), selection: t("conflictSelection") };
     showError(
       conflicts.map((c) => `${label[c.which] || c.which}: ${c.message}`).join(" "),
     );
   } catch (e) {
-    setStatus(`Couldn't check hotkeys: ${e}`);
+    setStatus(t("hotkeyCheckFailed", { error: e }));
   }
 }
 

@@ -51,6 +51,8 @@ fn main() {
     thread::spawn(move || {
         let _ = hook::run(hook_tx);
     });
+    // The hook installs disarmed; nothing is observed until it is armed.
+    hook::set_armed(true);
 
     // Let the hook install before injecting.
     thread::sleep(Duration::from_millis(500));

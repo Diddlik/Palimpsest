@@ -24,6 +24,12 @@ fn main() {
         }
     });
 
+    // `hook::run` installs the hook but leaves it disarmed — the callback drops
+    // every event until something arms it (in the app that is `Runtime::start`).
+    // Without this the spike installs a working hook and then prints nothing at
+    // all, which reads as "the hook is broken" when it is only switched off.
+    hook::set_armed(true);
+
     // Consume on the main thread. In the real app this is the engine thread.
     for key in rx.iter() {
         if !key.up {

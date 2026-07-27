@@ -12,10 +12,10 @@
         <span class="logo">P</span>
         <div>
           <h1>Palimpsest</h1>
-          <p class="tagline">Wrong-layout typing, quietly fixed.</p>
+          <p class="tagline" data-i18n="tagline">Wrong-layout typing, quietly fixed.</p>
         </div>
       </div>
-      <label class="switch" title="Master switch">
+      <label class="switch" data-i18n-title="masterSwitch">
         <input type="checkbox" id="enabled" />
         <span class="slider"></span>
         <span class="switch-label" id="enabled-label">On</span>
@@ -24,25 +24,25 @@
 
     <main>
       <section class="card">
-        <h2>Sensitivity</h2>
-        <p class="hint">
+        <h2 data-i18n="sensitivity">Sensitivity</h2>
+        <p class="hint" data-i18n="sensitivityHint">
           How sure Palimpsest must be before it corrects. Lower is more
           cautious (fewer false positives); higher is more eager.
         </p>
         <div class="slider-row">
-          <span class="slider-end">Cautious</span>
+          <span class="slider-end" data-i18n="cautious">Cautious</span>
           <input type="range" id="sensitivity" min="0" max="1" step="0.05" />
-          <span class="slider-end">Eager</span>
+          <span class="slider-end" data-i18n="eager">Eager</span>
           <output id="sensitivity-value">0.50</output>
         </div>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Layout pairs</h2>
-          <button class="ghost" id="add-pair" type="button">+ Add pair</button>
+          <h2 data-i18n="layoutPairs">Layout pairs</h2>
+          <button class="ghost" id="add-pair" type="button" data-i18n="addPair">+ Add pair</button>
         </div>
-        <p class="hint">
+        <p class="hint" data-i18n="layoutPairsHint">
           Pairs are considered in both directions. Palimpsest reinterprets a
           word across these layouts and switches to the better one.
         </p>
@@ -50,97 +50,113 @@
       </section>
 
       <section class="card">
-        <h2>Ignore in these apps</h2>
-        <p class="hint">
+        <h2 data-i18n="ignoreApps">Ignore in these apps</h2>
+        <p class="hint" data-i18n-html="ignoreAppsHint">
           Palimpsest stays completely silent in these — terminals, IDEs, games.
           Pick one from your running apps, or type executable names (one per
           line, e.g. <code>cmd.exe</code>).
         </p>
         <div class="picker-row">
           <select id="proc-list"></select>
-          <button class="ghost" id="add-proc" type="button">Add</button>
-          <button class="ghost" id="refresh-proc" type="button" title="Refresh list">↻</button>
+          <button class="ghost" id="add-proc" type="button" data-i18n="add">Add</button>
+          <button class="ghost" id="refresh-proc" type="button" data-i18n-title="refreshList">↻</button>
         </div>
         <textarea id="ignore" rows="4" spellcheck="false"></textarea>
       </section>
 
       <section class="card">
-        <h2>Advanced</h2>
+        <h2 data-i18n="language">Language</h2>
+        <p class="hint" data-i18n="languageHint">
+          Language of this window and the tray menu. It does not change which
+          languages Palimpsest corrects — that follows your layout pairs.
+        </p>
+        <select id="ui-language">
+          <!-- Values match `UiLang` in the core; "system" follows Windows. -->
+          <option value="system" data-i18n="systemLanguage">System language</option>
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+          <option value="uk">Українська</option>
+          <option value="de">Deutsch</option>
+        </select>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="advanced">Advanced</h2>
         <div class="field">
-          <label>Manual hotkey</label>
+          <label data-i18n="manualHotkey">Manual hotkey</label>
           <div class="hotkey-row">
             <span id="hotkey-display" class="hotkey-display">—</span>
-            <button class="ghost" id="set-hotkey" type="button">Set hotkey</button>
-            <button class="ghost" id="clear-hotkey" type="button">Clear</button>
+            <button class="ghost" id="set-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
+            <button class="ghost" id="clear-hotkey" type="button" data-i18n="clear">Clear</button>
           </div>
-          <span class="hint inline">
-            Click “Set hotkey”, then press a combination (e.g. Ctrl+Shift+Space).
+          <span class="hint inline" data-i18n="manualHotkeyHint">
+            Click “Set hotkey”, then press a combination. Default Ctrl+Shift+F9.
             On laptops and 75% keyboards prefer a chord — keys like Pause or
             Scroll Lock often aren't there. Forces a fix on the current word. Esc
             cancels.
           </span>
         </div>
         <div class="field">
-          <label>Convert selection hotkey</label>
+          <label data-i18n="selectionHotkey">Convert selection hotkey</label>
           <div class="hotkey-row">
             <span id="selection-hotkey-display" class="hotkey-display">—</span>
-            <button class="ghost" id="set-selection-hotkey" type="button">Set hotkey</button>
-            <button class="ghost" id="clear-selection-hotkey" type="button">Clear</button>
+            <button class="ghost" id="set-selection-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
+            <button class="ghost" id="clear-selection-hotkey" type="button" data-i18n="clear">Clear</button>
           </div>
-          <span class="hint inline">
+          <span class="hint inline" data-i18n="selectionHotkeyHint">
             Select any text, then press this to retype it in the other layout
-            (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+X; a modifier chord
+            (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+F8; a modifier chord
             works on every keyboard. Esc cancels.
           </span>
         </div>
         <label class="check">
           <input type="checkbox" id="autostart" />
-          Launch Palimpsest at login
+          <span data-i18n="autostart">Launch Palimpsest at login</span>
         </label>
         <div class="field" style="margin-top: 12px">
-          <button class="ghost" id="open-logs" type="button">Open logs folder</button>
-          <span class="hint inline">Diagnostics for bug reports. Never contains what you type.</span>
+          <button class="ghost" id="open-logs" type="button" data-i18n="openLogs">Open logs folder</button>
+          <span class="hint inline" data-i18n="logsHint">Diagnostics for bug reports. Never contains what you type.</span>
         </div>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Updates</h2>
-          <button class="ghost" id="check-update" type="button">Check now</button>
+          <h2 data-i18n="updates">Updates</h2>
+          <button class="ghost" id="check-update" type="button" data-i18n="checkNow">Check now</button>
         </div>
         <p class="hint" id="update-status">Checking…</p>
-        <button class="ghost" id="install-update" type="button" hidden>
+        <button class="ghost" id="install-update" type="button" hidden data-i18n="installRestart">
           Install and restart
         </button>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Recent corrections</h2>
-          <button class="ghost" id="undo" type="button">Undo last</button>
+          <h2 data-i18n="recentCorrections">Recent corrections</h2>
+          <button class="ghost" id="undo" type="button" data-i18n="undoLast">Undo last</button>
         </div>
         <ul id="history" class="history">
-          <li class="empty">Nothing yet.</li>
+          <li class="empty" data-i18n="nothingYet">Nothing yet.</li>
         </ul>
       </section>
 
       <section class="card">
         <div class="card-head">
-          <h2>Learned words</h2>
-          <button class="ghost" id="clear-words" type="button">Forget all</button>
+          <h2 data-i18n="learnedWords">Learned words</h2>
+          <button class="ghost" id="clear-words" type="button" data-i18n="forgetAll">Forget all</button>
         </div>
         <label class="check">
           <input type="checkbox" id="learn-on-undo" />
-          Learn a word when I undo its correction
+          <span data-i18n="learnOnUndo">Learn a word when I undo its correction</span>
         </label>
-        <span class="hint">
+        <span class="hint" data-i18n-html="learnedWordsHint">
           Undoing a correction tells Palimpsest the word was right as typed, so
           it stops correcting it. These words are the only thing Palimpsest saves
           from what you type — stored locally in <code>user_words.json</code>,
           never sent anywhere. Turn the setting off to save nothing at all.
         </span>
         <ul id="words" class="history">
-          <li class="empty">Nothing learned yet.</li>
+          <li class="empty" data-i18n="nothingLearned">Nothing learned yet.</li>
         </ul>
       </section>
     </main>
@@ -148,6 +164,7 @@
     <div id="toast" class="toast hidden"></div>
     <div id="status" class="statusbar"></div>
 
+    <script src="i18n.js"></script>
     <script src="main.js"></script>
   </body>
 </html>

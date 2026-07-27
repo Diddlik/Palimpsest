@@ -293,53 +293,60 @@ pub fn suggest(
     }
 }
 
-/// Decide how to reinterpret an already-rendered string — a user *selection* —
-/// across the configured layout pairs. Unlike [`suggest`], which works from
-/// buffered physical keys, this starts from the visible characters via a
-/// [`Transliterator`]. Like the manual hotkey it applies no sensitivity margin,
-/// but still requires the alternate to be *strictly more plausible* than the
-/// selection as it stands, so invoking it on correctly-typed text is a no-op.
+/// Reinterpret an already-rendered string — a user *selection* — under the
+/// configured layout pairs. Unlike [`suggest`], which works from buffered
+/// physical keys, this starts from the visible characters via a
+/// [`Transliterator`].
 ///
-/// Returns `None` to leave the selection untouched.
+/// **This is unconditional: scoring ranks the candidates, it never vetoes one.**
+/// The selection hotkey is an explicit instruction — the user picked the text
+/// and asked for the other layout — so second-guessing it is the wrong answer.
+/// Scoring exists to stop [`analyze`] from acting when *nobody asked*; here
+/// somebody did. Refusing produced the worst possible behaviour: a hotkey that
+/// silently does nothing, with no way for the user to tell "declined" from
+/// "broken". A conversion the user did not want costs them one undo.
+///
+/// Every pair is tried in **both** directions, deliberately ignoring which
+/// layout happens to be active. Anchoring on the live layout — as this used to —
+/// broke the most natural way to use the feature: type `ghbdtn`, notice, switch
+/// to Russian, *then* select it and press the hotkey. With Russian active the
+/// only orientation tried was RU→EN, and since no ЙЦУКЕН key produces `g` the
+/// transliteration came back unchanged and the conversion silently did nothing.
+/// Which orientation the OS is in says nothing about which layout the selected
+/// text was typed in; only the text does.
+///
+/// Returns `None` only when there is genuinely nothing to do: an empty
+/// selection, or no configured pair that renders it differently.
 pub fn suggest_text(
     text: &str,
-    current_layout: &str,
     pairs: &[LayoutPair],
     trans: &dyn Transliterator,
     models: &Models,
 ) -> Option<TextCorrection> {
-    if text.chars().count() < MIN_WORD_LEN {
+    if text.is_empty() {
         return None;
     }
-    let current_lang = Lang::from_klid(current_layout)?; // unknown layout — can't compare
-    let current_score = models.score(current_lang, text);
 
-    let mut best: Option<(String, String, f64, bool, Lang)> = None;
-    for (target, phonetic) in candidate_targets(current_layout, pairs) {
-        let Some(target_lang) = Lang::from_klid(target) else { continue };
-        let alt = trans.transliterate(text, current_layout, target);
-        if alt.is_empty() || alt == text {
-            continue;
-        }
-        let alt_score = models.score(target_lang, &alt);
-        if alt_score >= ALT_PLAUSIBILITY_FLOOR
-            && best.as_ref().is_none_or(|(_, _, s, _, _)| alt_score > *s)
-        {
-            best = Some((target.to_string(), alt, alt_score, phonetic, target_lang));
+    let mut best: Option<(String, String, f64)> = None;
+    for pair in pairs {
+        for (from, to) in [(&pair.from, &pair.to), (&pair.to, &pair.from)] {
+            let alt = trans.transliterate(text, from, to);
+            if alt.is_empty() || alt == text {
+                continue; // nothing on `from`'s keyboard produces this text
+            }
+            // Score only to pick between candidates when several pairs offer one.
+            // A target whose language the scorer doesn't know still converts; it
+            // just loses every tie.
+            let rank = Lang::from_klid(to)
+                .map(|lang| models.score(lang, &alt))
+                .unwrap_or(f64::NEG_INFINITY);
+            if best.as_ref().is_none_or(|(_, _, s)| rank > *s) {
+                best = Some((to.clone(), alt, rank));
+            }
         }
     }
 
-    // Like `suggest`, an explicit request on a phonetic pair converts whenever
-    // the alternate reads as a real word, since the score comparison cannot
-    // separate two plausible readings.
-    match best {
-        Some((target, alt, score, phonetic, lang))
-            if score > current_score || (phonetic && models.is_word(lang, &alt)) =>
-        {
-            Some(TextCorrection { text: alt, target_layout: target })
-        }
-        _ => None,
-    }
+    best.map(|(target_layout, text, _)| TextCorrection { text, target_layout })
 }
 
 #[cfg(test)]
@@ -686,37 +693,59 @@ mod tests {
         }
     }
 
-    fn suggest_text_in(text: &str, current: &str) -> Option<TextCorrection> {
-        suggest_text(text, current, &pairs(), &FakeTrans, &Models::builtin())
+    fn convert(text: &str) -> Option<TextCorrection> {
+        suggest_text(text, &pairs(), &FakeTrans, &Models::builtin())
     }
 
     #[test]
     fn selection_in_wrong_layout_is_converted() {
-        let c = suggest_text_in("ghbdtn", EN).expect("should convert");
+        let c = convert("ghbdtn").expect("should convert");
         assert_eq!(c.text, "привет");
         assert_eq!(Lang::from_klid(&c.target_layout), Some(Lang::Ru));
     }
 
     #[test]
     fn selection_conversion_preserves_case() {
-        let c = suggest_text_in("Ghbdtn", EN).expect("should convert");
+        let c = convert("Ghbdtn").expect("should convert");
         assert_eq!(c.text, "Привет");
     }
 
     #[test]
-    fn selection_of_real_text_is_left_alone() {
-        assert_eq!(suggest_text_in("hello", EN), None);
-        // Russian correctly typed on the RU layout must not be "fixed" to Latin.
-        assert_eq!(suggest_text_in("привет", RU), None);
+    fn selection_converts_unconditionally() {
+        // The explicit hotkey does not second-guess the user: text that reads
+        // perfectly well still converts, because they selected it and asked.
+        // Scoring as a veto belongs to `analyze`, which acts unbidden.
+        let c = convert("hello").expect("explicit conversion is unconditional");
+        assert_eq!(c.text, "руддщ");
+        // And it is its own inverse, so an unwanted conversion is one press away
+        // from being undone by hand as well as by the undo command.
+        assert_eq!(convert("руддщ").map(|c| c.text), Some("hello".into()));
     }
 
     #[test]
-    fn selection_too_short_is_ignored() {
-        assert_eq!(suggest_text_in("g", EN), None);
+    fn empty_selection_does_nothing_but_one_character_converts() {
+        assert_eq!(convert(""), None);
+        assert_eq!(convert("g").map(|c| c.text), Some("п".into()));
     }
 
     #[test]
-    fn selection_in_unknown_layout_is_ignored() {
-        assert_eq!(suggest_text_in("ghbdtn", "0000040c"), None); // French
+    fn selection_with_no_differing_reading_is_left_alone() {
+        // Digits sit on the same keys in both layouts, so no pair renders them
+        // differently and there is nothing to convert.
+        assert_eq!(convert("2026"), None);
+    }
+
+    #[test]
+    fn selection_converts_regardless_of_the_active_layout() {
+        // The regression this guards: the user types `ghbdtn`, notices, switches
+        // to Russian, and only then selects it and presses the hotkey. The
+        // conversion depends on the pairs and the text, never on which layout the
+        // OS happens to be in — there is no layout argument left to get wrong.
+        let c = convert("ghbdtn").expect("should convert");
+        assert_eq!(c.text, "привет");
+        // Symmetrically, Cyrillic typed on the wrong side converts back.
+        let c = convert("руддщ").expect("should convert");
+        assert_eq!(c.text, "hello");
+        assert_eq!(Lang::from_klid(&c.target_layout), Some(Lang::En));
     }
 }

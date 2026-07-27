@@ -3,11 +3,12 @@
 //! a control message, then return. No blocking work on the UI thread.
 
 use palimpsest_core::hotkey::{self, Unusable};
-use palimpsest_core::{layouts, processes, Config, Lang, LayoutInfo, UserWords};
+use palimpsest_core::{layouts, processes, Config, Lang, LayoutInfo, UiLang, UserWords};
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_updater::UpdaterExt;
 
+use crate::i18n;
 use crate::state::{self, AppState};
 
 /// The current live config (a snapshot the UI renders its form from).
@@ -69,7 +70,16 @@ pub fn list_layouts() -> Vec<LayoutInfo> {
     layouts::installed()
 }
 
-/// Turn a validation failure into something the user can act on.
+/// The concrete language the UI should render in: the configured one, or — for
+/// [`UiLang::System`] — whatever Windows reports. Resolved here rather than in
+/// the webview so the settings window and the tray can never disagree about what
+/// "system" means.
+#[tauri::command]
+pub fn resolved_ui_language(state: State<AppState>) -> String {
+    i18n::resolve(state.runtime.config().ui_language).code().to_string()
+}
+
+/// Turn a validation failure into something the user can act on, in `lang`.
 ///
 /// The `Busy` case is split by modifier deliberately. Windows reserves most
 /// `Win+…` shortcuts for the shell (Win+PageUp moves a window between monitors,
@@ -77,17 +87,15 @@ pub fn list_layouts() -> Vec<LayoutInfo> {
 /// blaming "another app" sends the user hunting for a culprit that does not
 /// exist. Naming Windows and offering combinations that actually pass the probe
 /// is the difference between a dead end and a fix.
-fn hotkey_error(reason: Unusable, mods: u8) -> String {
+fn hotkey_error(reason: Unusable, mods: u8, lang: UiLang) -> String {
+    let s = i18n::strings(lang);
     match reason {
-        Unusable::Typing => {
-            "That key types a character — add a modifier (e.g. Ctrl+Shift) or pick a key like Pause, F8, or Insert.".to_string()
-        }
-        Unusable::Modifier => "A modifier key can't be used on its own.".to_string(),
-        Unusable::Busy if mods & palimpsest_core::config::MOD_WIN != 0 => {
-            "Windows keeps most Win+… shortcuts for itself. Try Win+F8 or Win+Insert, or add Shift — Win+Shift+PageUp is free.".to_string()
-        }
-        Unusable::Busy => "That combination is already in use by another app.".to_string(),
+        Unusable::Typing => s.hotkey_typing,
+        Unusable::Modifier => s.hotkey_modifier,
+        Unusable::Busy if mods & palimpsest_core::config::MOD_WIN != 0 => s.hotkey_busy_win,
+        Unusable::Busy => s.hotkey_busy,
     }
+    .to_string()
 }
 
 /// Set the manual hotkey from a captured key + modifier bitmask, rejecting bare
@@ -95,7 +103,8 @@ fn hotkey_error(reason: Unusable, mods: u8) -> String {
 /// or by Windows. Returns a user-facing error message on rejection.
 #[tauri::command]
 pub fn set_hotkey(app: AppHandle, state: State<AppState>, vk: u32, mods: u8) -> Result<(), String> {
-    hotkey::validate(vk, mods).map_err(|reason| hotkey_error(reason, mods))?;
+    let lang = state.runtime.config().ui_language;
+    hotkey::validate(vk, mods).map_err(|reason| hotkey_error(reason, mods, lang))?;
     let mut config = (*state.runtime.config()).clone();
     config.manual_hotkey = vk;
     config.manual_hotkey_mods = mods;
@@ -117,7 +126,8 @@ pub fn clear_hotkey(app: AppHandle, state: State<AppState>) {
 /// rejection.
 #[tauri::command]
 pub fn set_selection_hotkey(app: AppHandle, state: State<AppState>, vk: u32, mods: u8) -> Result<(), String> {
-    hotkey::validate(vk, mods).map_err(|reason| hotkey_error(reason, mods))?;
+    let lang = state.runtime.config().ui_language;
+    hotkey::validate(vk, mods).map_err(|reason| hotkey_error(reason, mods, lang))?;
     let mut config = (*state.runtime.config()).clone();
     config.selection_hotkey = vk;
     config.selection_hotkey_mods = mods;
@@ -163,7 +173,7 @@ pub fn hotkey_conflicts(state: State<AppState>) -> Vec<HotkeyConflict> {
     .filter_map(|(which, vk, mods)| {
         hotkey::validate(vk, mods).err().map(|reason| HotkeyConflict {
             which: which.to_string(),
-            message: hotkey_error(reason, mods),
+            message: hotkey_error(reason, mods, config.ui_language),
         })
     })
     .collect()
