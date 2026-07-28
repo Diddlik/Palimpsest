@@ -43,6 +43,9 @@ pub struct Strings {
     pub diary_busy: &'static str,
     /// Elevated-autostart: the user dismissed the UAC prompt.
     pub elevated_cancelled: &'static str,
+    /// Window-title marker shown when Palimpsest runs elevated, e.g.
+    /// `Palimpsest (Administrator)`.
+    pub admin: &'static str,
 }
 
 const EN: Strings = Strings {
@@ -61,6 +64,7 @@ const EN: Strings = Strings {
     diary_locked: "Unlock the diary first.",
     diary_busy: "The diary is busy — try again.",
     elevated_cancelled: "Cancelled — nothing changed.",
+    admin: "Administrator",
 };
 
 const RU: Strings = Strings {
@@ -79,6 +83,7 @@ const RU: Strings = Strings {
     diary_locked: "Сначала разблокируйте дневник.",
     diary_busy: "Дневник занят — попробуйте ещё раз.",
     elevated_cancelled: "Отменено — ничего не изменилось.",
+    admin: "Администратор",
 };
 
 const UK: Strings = Strings {
@@ -97,6 +102,7 @@ const UK: Strings = Strings {
     diary_locked: "Спочатку розблокуйте щоденник.",
     diary_busy: "Щоденник зайнятий — спробуйте ще раз.",
     elevated_cancelled: "Скасовано — нічого не змінилося.",
+    admin: "Адміністратор",
 };
 
 const DE: Strings = Strings {
@@ -115,6 +121,7 @@ const DE: Strings = Strings {
     diary_locked: "Zuerst das Tagebuch entsperren.",
     diary_busy: "Das Tagebuch ist beschäftigt — bitte erneut versuchen.",
     elevated_cancelled: "Abgebrochen — nichts geändert.",
+    admin: "Administrator",
 };
 
 /// The string table for `lang`, resolving [`UiLang::System`] first.

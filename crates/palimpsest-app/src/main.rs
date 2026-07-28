@@ -180,6 +180,10 @@ fn main() {
                 diary: std::sync::Mutex::new(state::load_diary(&handle)),
             });
 
+            // Mark the title when we're the elevated instance, so an admin copy is
+            // recognisable at a glance; a normal one keeps the plain title.
+            elevate::apply_window_title(&handle, lang);
+
             // If the diary loaded already unlocked (no password) but recording is
             // off, that's fine; the relay above only appends when the engine
             // emits, which it does only while the feature is on.

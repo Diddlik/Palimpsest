@@ -19,6 +19,12 @@ use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 
+use palimpsest_core::UiLang;
+use tauri::{AppHandle, Manager};
+use windows::Win32::Foundation::{CloseHandle, HANDLE};
+use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
+use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
 /// Scheduled-task name. Bare (no folder) so `schtasks /TN Palimpsest` addresses it.
 const TASK_NAME: &str = "Palimpsest";
 /// `CREATE_NO_WINDOW` — keep the brief `schtasks`/`powershell` consoles hidden.
@@ -32,6 +38,44 @@ pub enum Error {
     Cancelled,
     /// Anything else (a `schtasks` failure, an I/O error), with a message.
     Failed(String),
+}
+
+/// Whether *this* process is currently running elevated (high integrity). Used to
+/// mark the window title, so the user can tell an elevated instance — the one that
+/// works in administrator windows — from a normal one at a glance.
+pub fn is_elevated() -> bool {
+    unsafe {
+        let mut token = HANDLE::default();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).is_err() {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut ret_len = 0u32;
+        let ok = GetTokenInformation(
+            token,
+            TokenElevation,
+            Some(&mut elevation as *mut _ as *mut _),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut ret_len,
+        )
+        .is_ok();
+        let _ = CloseHandle(token);
+        ok && elevation.TokenIsElevated != 0
+    }
+}
+
+/// Set the settings window title: `Palimpsest (Administrator)` when elevated, plain
+/// `Palimpsest` otherwise. Called at startup and whenever the language changes, so
+/// the marker follows the chosen language. Best-effort — a title is cosmetic.
+pub fn apply_window_title(app: &AppHandle, lang: UiLang) {
+    let title = if is_elevated() {
+        format!("Palimpsest ({})", crate::i18n::strings(lang).admin)
+    } else {
+        "Palimpsest".to_string()
+    };
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.set_title(&title);
+    }
 }
 
 /// Whether the elevated-logon task is currently registered. Reading a task needs

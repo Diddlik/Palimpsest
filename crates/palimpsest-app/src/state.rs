@@ -110,6 +110,8 @@ pub fn apply_config(app: &AppHandle, state: &AppState, config: Config) {
     let _ = state.tray.toggle.set_checked(enabled);
     crate::tray::retranslate(&state.tray, lang);
     update_tray_tooltip(app, enabled, lang);
+    // Keep the elevated title marker in the just-chosen language.
+    crate::elevate::apply_window_title(app, lang);
     let _ = app.emit("status", StatusPayload { enabled });
 }
 
