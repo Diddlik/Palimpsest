@@ -226,6 +226,8 @@ button.icon:hover { background: rgba(200,85,61,.12); }
 
 /* Diary controls */
 .diary-options { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.diary-limits { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 14px; }
+.diary-limits label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; }
 .diary-actions { display: flex; gap: 8px; }
 .diary-pw-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .diary-pw-row input { flex: 1 1 140px; min-width: 0; }

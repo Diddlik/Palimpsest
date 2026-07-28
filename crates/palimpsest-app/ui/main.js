@@ -64,6 +64,9 @@ const el = {
   diaryEnabled: $("diary-enabled"),
   diaryClipboard: $("diary-clipboard"),
   diarySkipShort: $("diary-skip-short"),
+  diaryMaxEntries: $("diary-max-entries"),
+  diaryRetentionDays: $("diary-retention-days"),
+  diaryMaxSizeMb: $("diary-max-size-mb"),
   diaryProtectionState: $("diary-protection-state"),
   diarySetPwRow: $("diary-set-pw-row"),
   diaryPw: $("diary-pw"),
@@ -350,6 +353,9 @@ function populate(config) {
   el.diaryEnabled.checked = config.diary_enabled === true;
   el.diaryClipboard.checked = config.diary_capture_clipboard === true;
   el.diarySkipShort.checked = config.diary_skip_short !== false;
+  el.diaryMaxEntries.value = config.diary_max_entries || 500;
+  el.diaryRetentionDays.value = config.diary_retention_days || 0;
+  el.diaryMaxSizeMb.value = config.diary_max_size_mb || 0;
   el.ignore.value = (config.ignore_processes || []).join("\n");
 
   el.pairs.innerHTML = "";
@@ -374,6 +380,9 @@ function gather() {
     diary_enabled: el.diaryEnabled.checked,
     diary_capture_clipboard: el.diaryClipboard.checked,
     diary_skip_short: el.diarySkipShort.checked,
+    diary_max_entries: Math.min(10000, Math.max(1, parseInt(el.diaryMaxEntries.value, 10) || 500)),
+    diary_retention_days: Math.min(36500, Math.max(0, parseInt(el.diaryRetentionDays.value, 10) || 0)),
+    diary_max_size_mb: Math.min(1024, Math.max(0, parseInt(el.diaryMaxSizeMb.value, 10) || 0)),
     ui_language: el.uiLanguage.value,
   };
 }
@@ -914,6 +923,9 @@ function wire() {
 
   el.diaryClipboard.addEventListener("change", apply);
   el.diarySkipShort.addEventListener("change", apply);
+  el.diaryMaxEntries.addEventListener("change", apply);
+  el.diaryRetentionDays.addEventListener("change", apply);
+  el.diaryMaxSizeMb.addEventListener("change", apply);
   el.diarySearch.addEventListener("input", renderDiary);
 
   el.diarySetPw.addEventListener("click", async () => {

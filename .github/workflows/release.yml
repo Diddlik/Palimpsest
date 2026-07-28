@@ -46,7 +46,22 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Palimpsest ${{ github.ref_name }}
           releaseBody: |
-            Windows installer: `Palimpsest_*_x64-setup.exe`.
+            ## What's new
+
+            - Configure how many typing-diary entries are retained.
+            - Remove diary entries automatically after a chosen number of days.
+            - Limit the size of `diary.json`; the oldest entries are removed first.
+            - Retention works for both plaintext and password-protected diaries.
+            - Diary retention settings are available in English, German, Russian,
+              and Ukrainian.
+
+            ## Download
+
+            Download `Palimpsest_0.4.0_x64-setup.exe` below and run it. Existing
+            settings are preserved; the previous 500-entry diary limit remains
+            the default, while age and file-size limits stay unlimited until set.
+
+            ## Installation note
 
             The build is not code-signed yet, so SmartScreen will warn on first
             run — "More info" → "Run anyway".

@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use palimpsest_core::crypt::{Sealed, Unlocked};
 use palimpsest_core::{Config, Diary, Runtime, UiLang, UserWords};
@@ -103,10 +104,21 @@ pub fn save_config(app: &AppHandle, config: &Config) {
 /// picks it up lock-free), persist it, sync the tray's check item and tooltip,
 /// and notify the settings window. The single choke point so nothing drifts.
 pub fn apply_config(app: &AppHandle, state: &AppState, config: Config) {
+    let old = state.runtime.config();
+    let diary_limits_changed = old.diary_max_entries != config.diary_max_entries
+        || old.diary_retention_days != config.diary_retention_days
+        || old.diary_max_size_mb != config.diary_max_size_mb;
     let enabled = config.enabled;
     let lang = config.ui_language;
     state.runtime.set_config(config.clone());
     save_config(app, &config);
+    if diary_limits_changed {
+        if let Ok(mut ds) = state.diary.lock() {
+            if !ds.diary.is_empty() {
+                save_diary(app, &mut ds, &config);
+            }
+        }
+    }
     let _ = state.tray.toggle.set_checked(enabled);
     crate::tray::retranslate(&state.tray, lang);
     update_tray_tooltip(app, enabled, lang);
@@ -172,6 +184,25 @@ enum DiaryFile {
     Plain(Diary),
 }
 
+fn serialize_bounded_diary(
+    ds: &mut DiaryState,
+    max_bytes: usize,
+) -> Result<Option<String>, serde_json::Error> {
+    loop {
+        let json = if ds.protected {
+            let Some(key) = &ds.key else { return Ok(None) };
+            let bytes = serde_json::to_vec(&ds.diary)?;
+            serde_json::to_string(&key.seal(&bytes))?
+        } else {
+            serde_json::to_string(&ds.diary)?
+        };
+        if max_bytes == 0 || json.len() <= max_bytes || ds.diary.entries.is_empty() {
+            return Ok(Some(json));
+        }
+        ds.diary.entries.pop_front();
+    }
+}
+
 /// Load the diary into its correct lock state. A missing file is the normal case
 /// (it is only ever written while the feature is on); a sealed file loads locked,
 /// with no entries in memory until the user unlocks it.
@@ -199,33 +230,24 @@ pub fn load_diary(app: &AppHandle) -> DiaryState {
 ///
 /// A protected-but-locked diary is never written: there is no key, and its
 /// in-memory copy is empty, so there is nothing to persist and nothing to lose.
-pub fn save_diary(app: &AppHandle, ds: &DiaryState) {
+pub fn save_diary(app: &AppHandle, ds: &mut DiaryState, config: &Config) {
     let Some(path) = diary_path(app) else {
         tracing::warn!("no config directory available; diary not persisted");
         return;
     };
-    let json = if ds.protected {
-        let Some(key) = &ds.key else { return }; // locked — nothing to write
-        match serde_json::to_vec(&ds.diary) {
-            Ok(bytes) => match serde_json::to_string(&key.seal(&bytes)) {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to serialize the sealed diary");
-                    return;
-                }
-            },
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to serialize the diary");
-                return;
-            }
-        }
-    } else {
-        match serde_json::to_string(&ds.diary) {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to serialize the diary");
-                return;
-            }
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let max_entries = (config.diary_max_entries as usize)
+        .clamp(1, palimpsest_core::diary::MAX_ENTRIES);
+    let max_age = u64::from(config.diary_retention_days.min(36_500)) * 86_400;
+    ds.diary.prune_limits(now, max_entries, max_age);
+
+    let max_bytes = (config.diary_max_size_mb.min(1_024) as usize) * 1024 * 1024;
+    let json = match serialize_bounded_diary(ds, max_bytes) {
+        Ok(Some(s)) => s,
+        Ok(None) => return, // locked — nothing to write
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialize the diary");
+            return;
         }
     };
     if let Some(dir) = path.parent() {
@@ -304,12 +326,15 @@ pub fn export_diary_text(app: &AppHandle, diary: &Diary) -> std::io::Result<Stri
 /// the way out, when nothing more will be appended.
 pub fn flush_diary(app: &AppHandle, final_flush: bool) {
     let Some(state) = app.try_state::<AppState>() else { return };
-    let skip_short = state.runtime.config().diary_skip_short;
+    let config = state.runtime.config();
     let Ok(mut ds) = state.diary.lock() else { return };
-    if skip_short {
+    if ds.diary.is_empty() && !diary_path(app).map(|p| p.exists()).unwrap_or(false) {
+        return;
+    }
+    if config.diary_skip_short {
         ds.diary.prune_short(final_flush);
     }
-    save_diary(app, &ds);
+    save_diary(app, &mut ds, &config);
 }
 
 /// Reflect the on/off state in the tray tooltip, in the user's language.
@@ -318,5 +343,24 @@ pub fn update_tray_tooltip(app: &AppHandle, enabled: bool, lang: UiLang) {
         let s = crate::i18n::strings(lang);
         let text = if enabled { s.tooltip_on } else { s.tooltip_paused };
         let _ = tray.set_tooltip(Some(text));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_size_limit_drops_oldest_entries_first() {
+        let mut diary = Diary::default();
+        for i in 0..3 {
+            diary.push(i * 1_000, &format!("{i}.exe"), &"x".repeat(120));
+        }
+        let mut ds = DiaryState::plain(diary);
+        let json = serialize_bounded_diary(&mut ds, 250).unwrap().unwrap();
+
+        assert!(json.len() <= 250);
+        assert!(ds.diary.entries.len() < 3);
+        assert_eq!(ds.diary.entries.back().unwrap().app, "2.exe");
     }
 }

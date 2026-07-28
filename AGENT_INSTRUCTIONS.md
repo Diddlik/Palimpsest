@@ -306,8 +306,11 @@ desktop is manual and must be flagged as such, not automated away.
       path. It watches the lock-free sequence counter and resets its baseline
       after Palimpsest's own selection-conversion writes so it doesn't record
       them.
-    - Entries are capped at `diary::MAX_ENTRIES`; Settings → Diary shows the lot,
-      searches, exports to a text file, and erases in one click.
+    - Settings → Diary limits retention by entry count, age in days, and the
+      actual `diary.json` size. Oldest entries go first; age and size accept `0`
+      for unlimited. `diary::MAX_ENTRIES` remains the absolute memory ceiling.
+      The tab shows the lot, searches, exports to a text file, and erases in one
+      click.
     - **Encryption + password** (`crypt.rs`: Argon2id + XChaCha20-Poly1305).
       Setting a password *is* what enables at-rest encryption — there is no key
       without one. A password-protected diary loads **locked**: it neither shows

@@ -12,8 +12,8 @@
 //!   after `engine::blocked()` has cleared the foreground window, so password
 //!   fields and ignore-listed apps produce no entries — the same gate that stops
 //!   corrections.
-//! - **Bounded.** At most [`MAX_ENTRIES`] entries are kept; the oldest are
-//!   dropped. The diary is a recent-history tool, not an archive.
+//! - **Bounded.** User-configured count, age, and file-size limits remove the
+//!   oldest entries first. [`MAX_ENTRIES`] is the absolute in-memory ceiling.
 //! - **Visible and erasable.** Settings → History lists every entry and can wipe
 //!   the lot, the same contract as the learned-word dictionary.
 //! - **Never logged.** Diary text goes to `diary.json` and the settings window,
@@ -28,8 +28,8 @@ use std::collections::VecDeque;
 
 use serde::{Deserialize, Serialize};
 
-/// Most entries retained. Older ones fall off the front.
-pub const MAX_ENTRIES: usize = 500;
+/// Absolute in-memory safety ceiling. The configured default is 500.
+pub const MAX_ENTRIES: usize = 10_000;
 
 /// Consecutive words in the same app within this many seconds are appended to
 /// the same entry instead of starting a new one.
@@ -131,6 +131,17 @@ impl Diary {
         });
     }
 
+    /// Remove expired entries, then keep only the newest `max_entries`.
+    pub fn prune_limits(&mut self, now: u64, max_entries: usize, max_age_secs: u64) {
+        if max_age_secs > 0 {
+            let cutoff = now.saturating_sub(max_age_secs);
+            self.entries.retain(|e| e.until >= cutoff);
+        }
+        while self.entries.len() > max_entries {
+            self.entries.pop_front();
+        }
+    }
+
     /// Erase everything — the escape hatch that makes the whole feature
     /// reversible.
     pub fn clear(&mut self) {
@@ -224,6 +235,20 @@ mod tests {
         let mut d = Diary::default();
         d.push(1, "notepad.exe", "hello");
         d.clear();
+        assert!(d.is_empty());
+    }
+
+    #[test]
+    fn configured_limits_remove_oldest_and_expired_entries() {
+        let mut d = Diary::default();
+        d.push(100, "a.exe", "one");
+        d.push(200, "b.exe", "two");
+        d.push(300, "c.exe", "three");
+        d.prune_limits(350, 2, 200);
+        assert_eq!(d.entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
+            vec!["two", "three"]);
+
+        d.prune_limits(1_000, 10, 100);
         assert!(d.is_empty());
     }
 

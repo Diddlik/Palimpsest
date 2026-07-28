@@ -179,6 +179,9 @@ fn main() {
                 tray,
                 diary: std::sync::Mutex::new(state::load_diary(&handle)),
             });
+            // Apply retention to an existing plaintext diary at startup. A
+            // protected diary is pruned immediately after it is unlocked.
+            state::flush_diary(&handle, false);
 
             // Mark the title when we're the elevated instance, so an admin copy is
             // recognisable at a glance; a normal one keeps the plain title.

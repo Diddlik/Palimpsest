@@ -297,7 +297,8 @@ pub fn diary_status(state: State<AppState>) -> DiaryStatus {
 /// the contents never leave the backend without the password. When unprotected
 /// or unlocked it must be inspectable in full, like the learned-word list.
 #[tauri::command]
-pub fn list_diary(state: State<AppState>) -> Diary {
+pub fn list_diary(app: AppHandle, state: State<AppState>) -> Diary {
+    state::flush_diary(&app, false);
     match state.diary.lock() {
         Ok(ds) if ds.unlocked => ds.diary.clone(),
         _ => Diary::default(),
@@ -324,6 +325,7 @@ pub fn unlock_diary(app: AppHandle, state: State<AppState>, password: String) ->
                 ds.unlocked = true;
                 ds.key = Some(key);
             }
+            state::flush_diary(&app, false);
             Ok(())
         }
         Err(_) => Err(i18n::strings(lang).diary_wrong_password.to_string()),
@@ -347,7 +349,7 @@ pub fn set_diary_password(app: AppHandle, state: State<AppState>, password: Stri
     ds.key = Some(palimpsest_core::crypt::Unlocked::new(&password));
     ds.protected = true;
     ds.unlocked = true;
-    state::save_diary(&app, &ds);
+    state::save_diary(&app, &mut ds, &state.runtime.config());
     Ok(())
 }
 
@@ -363,7 +365,7 @@ pub fn clear_diary_password(app: AppHandle, state: State<AppState>) -> Result<()
     }
     ds.protected = false;
     ds.key = None;
-    state::save_diary(&app, &ds);
+    state::save_diary(&app, &mut ds, &state.runtime.config());
     Ok(())
 }
 
@@ -373,7 +375,7 @@ pub fn clear_diary_password(app: AppHandle, state: State<AppState>) -> Result<()
 pub fn clear_diary(app: AppHandle, state: State<AppState>) {
     if let Ok(mut ds) = state.diary.lock() {
         ds.diary.clear();
-        state::save_diary(&app, &ds);
+        state::save_diary(&app, &mut ds, &state.runtime.config());
     }
 }
 

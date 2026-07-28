@@ -90,6 +90,8 @@ pub const MOD_SHIFT: u8 = 0x4;
 /// Win modifier bit (see [`MOD_ALT`]).
 pub const MOD_WIN: u8 = 0x8;
 
+pub const DEFAULT_DIARY_MAX_ENTRIES: u32 = 500;
+
 /// User-facing configuration. Cheap to clone (small `Vec`s); the runtime stores
 /// it behind `ArcSwap` and hands out `Arc<Config>` snapshots to readers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -180,6 +182,15 @@ pub struct Config {
     /// captures are exempt. See [`crate::diary::Diary::prune_short`].
     #[serde(default = "default_true")]
     pub diary_skip_short: bool,
+    /// Maximum diary entries kept. The oldest entries are removed first.
+    #[serde(default = "default_diary_max_entries")]
+    pub diary_max_entries: u32,
+    /// Maximum age in days. `0` keeps entries regardless of age.
+    #[serde(default)]
+    pub diary_retention_days: u32,
+    /// Maximum size of `diary.json` in MiB. `0` disables the size limit.
+    #[serde(default)]
+    pub diary_max_size_mb: u32,
     /// Whether undoing a correction teaches Palimpsest that the word was right
     /// as typed, so it stops correcting it. This is the one path that writes
     /// typed text to disk (see [`crate::user_dict`]), so it is switchable —
@@ -198,6 +209,10 @@ pub struct Config {
 /// matching [`Config::default`] rather than `bool`'s `false`.
 fn default_true() -> bool {
     true
+}
+
+fn default_diary_max_entries() -> u32 {
+    DEFAULT_DIARY_MAX_ENTRIES
 }
 
 /// serde default for [`Config::undo_hotkey`] — see the field's note on why this
@@ -231,6 +246,9 @@ impl Default for Config {
             diary_enabled: false, // a keystroke log is never on unless asked for
             diary_capture_clipboard: false,
             diary_skip_short: true,
+            diary_max_entries: DEFAULT_DIARY_MAX_ENTRIES,
+            diary_retention_days: 0,
+            diary_max_size_mb: 0,
             learn_on_undo: true,
             ui_language: UiLang::System,
         }
@@ -335,6 +353,9 @@ mod tests {
         // The short-entry guard defaults on, so an older file gains the safer
         // behaviour rather than logging lone words.
         assert!(older.diary_skip_short);
+        assert_eq!(older.diary_max_entries, DEFAULT_DIARY_MAX_ENTRIES);
+        assert_eq!(older.diary_retention_days, 0);
+        assert_eq!(older.diary_max_size_mb, 0);
     }
 
     #[test]

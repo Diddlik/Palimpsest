@@ -230,6 +230,23 @@
               <span data-i18n="diarySkipShort">Skip entries shorter than two words</span>
             </label>
           </div>
+          <div class="diary-limits">
+            <label>
+              <span data-i18n="diaryMaxEntries">Maximum entries</span>
+              <input type="number" id="diary-max-entries" min="1" max="10000" step="1" />
+            </label>
+            <label>
+              <span data-i18n="diaryRetentionDays">Keep for days</span>
+              <input type="number" id="diary-retention-days" min="0" max="36500" step="1" />
+            </label>
+            <label>
+              <span data-i18n="diaryMaxSizeMb">Maximum file size (MiB)</span>
+              <input type="number" id="diary-max-size-mb" min="0" max="1024" step="1" />
+            </label>
+          </div>
+          <p class="hint" data-i18n="diaryLimitsHint">
+            Oldest entries are removed first. Set days or file size to 0 for no limit.
+          </p>
         </div>
 
         <div class="card">

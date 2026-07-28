@@ -107,6 +107,11 @@ const I18N = {
     diaryEnabled: "Record",
     diaryClipboard: "Also record clipboard (copied text)",
     diarySkipShort: "Skip entries shorter than two words",
+    diaryMaxEntries: "Maximum entries",
+    diaryRetentionDays: "Keep for days",
+    diaryMaxSizeMb: "Maximum file size (MiB)",
+    diaryLimitsHint:
+      "Oldest entries are removed first. Set days or file size to 0 for no limit.",
     clearDiary: "Erase diary",
     diaryWarning:
       "<strong>This is a keystroke log.</strong> With it on, every word you type is written to disk on this machine — not just corrections. Anyone with access to your user profile can read it unless you protect it with a password below. Nothing is recorded in password fields or ignored apps, nothing is ever sent anywhere, and it is off unless you switch it on here.",
@@ -282,6 +287,11 @@ const I18N = {
     diaryEnabled: "Записывать",
     diaryClipboard: "Записывать также буфер обмена (скопированный текст)",
     diarySkipShort: "Пропускать записи короче двух слов",
+    diaryMaxEntries: "Максимум записей",
+    diaryRetentionDays: "Хранить дней",
+    diaryMaxSizeMb: "Максимальный размер файла (МиБ)",
+    diaryLimitsHint:
+      "Сначала удаляются самые старые записи. 0 дней или 0 МиБ означает без ограничения.",
     clearDiary: "Стереть дневник",
     diaryWarning:
       "<strong>Это журнал нажатий клавиш.</strong> Когда он включён, каждое набранное слово записывается на диск этого компьютера — не только исправления. Прочитать его сможет любой, у кого есть доступ к вашему профилю, если не защитить дневник паролем ниже. В полях паролей и в приложениях-исключениях ничего не пишется, никуда ничего не отправляется, и по умолчанию всё это выключено.",
@@ -457,6 +467,11 @@ const I18N = {
     diaryEnabled: "Записувати",
     diaryClipboard: "Записувати також буфер обміну (скопійований текст)",
     diarySkipShort: "Пропускати записи, коротші за два слова",
+    diaryMaxEntries: "Максимум записів",
+    diaryRetentionDays: "Зберігати днів",
+    diaryMaxSizeMb: "Максимальний розмір файлу (МіБ)",
+    diaryLimitsHint:
+      "Спочатку видаляються найстаріші записи. 0 днів або 0 МіБ означає без обмеження.",
     clearDiary: "Стерти щоденник",
     diaryWarning:
       "<strong>Це журнал натискань клавіш.</strong> Коли він увімкнений, кожне набране слово записується на диск цього комп'ютера — не лише виправлення. Будь-хто, хто має доступ до вашого профілю, зможе його прочитати, якщо не захистити щоденник паролем нижче. У полях паролів і в застосунках-винятках нічого не пишеться, нікуди нічого не надсилається, і типово все це вимкнено.",
@@ -632,6 +647,11 @@ const I18N = {
     diaryEnabled: "Aufzeichnen",
     diaryClipboard: "Auch die Zwischenablage aufzeichnen (kopierter Text)",
     diarySkipShort: "Einträge unter zwei Wörtern überspringen",
+    diaryMaxEntries: "Maximale Einträge",
+    diaryRetentionDays: "Aufbewahrung in Tagen",
+    diaryMaxSizeMb: "Maximale Dateigröße (MiB)",
+    diaryLimitsHint:
+      "Die ältesten Einträge werden zuerst entfernt. 0 Tage oder 0 MiB bedeutet unbegrenzt.",
     clearDiary: "Tagebuch löschen",
     diaryWarning:
       "<strong>Das ist ein Tastenprotokoll.</strong> Eingeschaltet wird jedes getippte Wort auf die Festplatte dieses Rechners geschrieben — nicht nur Korrekturen. Wer Zugriff auf Ihr Benutzerprofil hat, kann es lesen, sofern Sie es unten nicht mit einem Passwort schützen. In Passwortfeldern und ignorierten Apps wird nichts aufgezeichnet, es wird nie irgendwohin gesendet, und ohne diesen Schalter bleibt alles aus.",
