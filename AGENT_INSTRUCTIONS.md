@@ -334,11 +334,12 @@ desktop is manual and must be flagged as such, not automated away.
   lock screen, or the secure desktop — and, by UIPI, its low-level hook does not
   even *see* keystrokes going to an elevated window, so a hotkey pressed there
   fires nothing and looks broken. Do not pretend otherwise in code or docs. The
-  opt-in remedy is Settings → General → "Start as administrator at login"
-  (`elevate.rs`): a `HighestAvailable` scheduled task started at logon, so
-  Palimpsest runs elevated and sees every window. It is off by default, prompts
-  UAC once when enabled (creating the task needs it), and turns off the normal
-  Run-key autostart so the two do not race the single-instance guard.
+  opt-in remedy is Settings → General → "Always run as administrator"
+  (`elevate.rs`): a `HighestAvailable` scheduled task starts at logon. Any
+  non-elevated manual or post-update launch redirects through that task before
+  the single-instance lock, so Palimpsest stays elevated across every start. It
+  is off by default, prompts UAC once when enabled (creating the task needs it),
+  and turns off normal Run-key autostart so the two do not race.
 
 ## Commits & Pull Requests
 

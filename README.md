@@ -136,8 +136,9 @@ erased from Settings → History:
   encrypts the file (Argon2id + XChaCha20-Poly1305). A protected diary loads
   locked and neither shows nor records until you unlock it, and a forgotten
   password is unrecoverable. Nothing is recorded in password fields or ignored
-  apps, entries under two words are skipped by default, it is capped at 500
-  entries, and one click erases it.
+  apps, entries under two words are skipped by default, and one click erases it.
+  Retention can be limited by entry count, age, and file size; 500 entries is
+  the default.
 
 Because Palimpsest uses a global keyboard hook and synthesizes input, antivirus
 and SmartScreen warnings are a real distribution concern. A credible release
@@ -146,7 +147,9 @@ documentation.
 
 Windows integrity boundaries still apply. A non-elevated Palimpsest process
 cannot reliably inject input into elevated administrator windows, UAC prompts,
-the lock screen, or the secure desktop.
+the lock screen, or the secure desktop. The opt-in **Always run as
+administrator** setting uses one UAC-approved scheduled task and preserves
+elevation across login, manual starts, and updater restarts.
 
 ## User interface
 

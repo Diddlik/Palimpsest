@@ -1,5 +1,5 @@
-//! "Run elevated at logon" — a Windows scheduled task that starts Palimpsest with
-//! administrator rights when the user signs in.
+//! "Always run elevated" — a Windows scheduled task that starts Palimpsest with
+//! administrator rights at logon and redirects non-elevated launches.
 //!
 //! Why this exists: the keyboard hook runs at the process's integrity level, and
 //! Windows UIPI stops a normal (medium) process from seeing keystrokes that go to
@@ -10,10 +10,10 @@
 //!
 //! A `requireAdministrator` manifest would elevate too, but it prompts UAC on
 //! every manual launch and can't be auto-started at logon. A scheduled task with
-//! the `HighestAvailable` run level starts Palimpsest elevated at logon with no
-//! recurring prompt — the single UAC is when the task is created here. Creating
-//! and deleting the task need elevation, so those go through an elevated
-//! `schtasks`; querying it does not.
+//! the `HighestAvailable` run level starts Palimpsest elevated without recurring
+//! prompts — at logon directly, and on every other launch via `schtasks /Run`.
+//! The single UAC is when the task is created here. Creating and deleting the
+//! task need elevation; querying and running an existing task do not.
 
 use std::os::windows::process::CommandExt;
 use std::path::Path;
@@ -33,6 +33,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const ERROR_CANCELLED: i32 = 1223;
 
 /// Why enabling or disabling the elevated-logon task failed.
+#[derive(Debug)]
 pub enum Error {
     /// The user dismissed the UAC prompt — a choice, not a fault.
     Cancelled,
@@ -87,6 +88,33 @@ pub fn is_enabled() -> bool {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+}
+
+pub(crate) fn needs_elevated_redirect(elevated: bool, task_enabled: bool) -> bool {
+    task_enabled && !elevated
+}
+
+/// Redirect a non-elevated launch through the existing highest-privilege task.
+/// Called before Tauri's single-instance plugin takes its lock, so the elevated
+/// process can become the one live instance. This also repairs the updater's
+/// deliberate `RunAsUser` restart without another UAC prompt.
+pub fn redirect_if_needed() -> Result<bool, Error> {
+    if !needs_elevated_redirect(is_elevated(), is_enabled()) {
+        return Ok(false);
+    }
+    let status = Command::new("schtasks")
+        .args(["/Run", "/TN", TASK_NAME])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .map_err(|e| Error::Failed(e.to_string()))?;
+    if status.success() {
+        Ok(true)
+    } else {
+        Err(Error::Failed(format!(
+            "schtasks /Run exited with code {}",
+            status.code().map(|c| c.to_string()).unwrap_or_else(|| "unknown".into())
+        )))
+    }
 }
 
 /// Register the task so `exe` runs elevated at the next logon. Prompts UAC once.
@@ -171,4 +199,16 @@ fn task_xml(exe: &Path) -> String {
   <Actions Context="Author"><Exec><Command>{cmd}</Command></Exec></Actions>
 </Task>"#
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enabled_admin_mode_redirects_only_a_non_elevated_process() {
+        assert!(needs_elevated_redirect(false, true));
+        assert!(!needs_elevated_redirect(true, true));
+        assert!(!needs_elevated_redirect(false, false));
+    }
 }

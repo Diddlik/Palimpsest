@@ -28,6 +28,15 @@ fn main() {
     // and stamps every diagnostics file with the build it came from.
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "Palimpsest starting");
 
+    match elevate::redirect_if_needed() {
+        Ok(true) => {
+            tracing::info!("redirected non-elevated launch through administrator task");
+            return;
+        }
+        Err(e) => tracing::warn!(error = ?e, "administrator redirect failed; continuing normally"),
+        Ok(false) => {}
+    }
+
     tauri::Builder::default()
         // Single-instance must be registered first so a second launch is
         // intercepted before any other plugin or the hook is set up again.

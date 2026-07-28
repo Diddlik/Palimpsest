@@ -863,9 +863,8 @@ function wire() {
     }
   });
 
-  // Elevated autostart triggers a UAC prompt (creating/removing the scheduled
-  // task needs admin). A dismissed prompt comes back as an error, so revert the
-  // checkbox to its real state on any failure rather than leaving it lying.
+  // Always-elevated mode triggers a UAC prompt when its scheduled task is
+  // created/removed. Revert the checkbox if that fails or is cancelled.
   el.elevatedAutostart.addEventListener("change", async () => {
     if (!ready) return;
     const want = el.elevatedAutostart.checked;

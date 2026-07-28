@@ -52,19 +52,18 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 
-/// Whether Palimpsest is registered to start **elevated** at logon (the scheduled
-/// task). Separate from [`get_autostart`], which is the normal medium-integrity
-/// Run entry.
+/// Whether Palimpsest is registered to always start **elevated** through the
+/// scheduled task. Separate from [`get_autostart`], which is the normal
+/// medium-integrity Run entry.
 #[tauri::command]
 pub fn get_elevated_autostart() -> bool {
     crate::elevate::is_enabled()
 }
 
-/// Turn the elevated-at-logon scheduled task on or off. Prompts UAC once (creating
-/// or deleting such a task needs elevation). Enabling it also drops the normal
-/// autostart, so the app is not launched twice at logon — the two would then race
-/// the single-instance guard, and the medium copy winning is exactly the bug this
-/// exists to avoid. See [`crate::elevate`] for why elevation is needed at all.
+/// Turn always-elevated startup on or off. Prompts UAC once (creating or deleting
+/// the task needs elevation). Enabling also drops normal autostart; non-elevated
+/// manual and post-update launches redirect through the task before taking the
+/// single-instance lock. See [`crate::elevate`] for the integrity-level rationale.
 #[tauri::command]
 pub fn set_elevated_autostart(app: AppHandle, state: State<AppState>, enabled: bool) -> Result<(), String> {
     let lang = state.runtime.config().ui_language;
