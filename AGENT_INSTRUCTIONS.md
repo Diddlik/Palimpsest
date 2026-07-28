@@ -328,7 +328,14 @@ desktop is manual and must be flagged as such, not automated away.
   add a second one.
 - Config changes apply live (no restart) and persist under `%APPDATA%`.
 - A non-elevated process cannot inject into elevated windows, UAC prompts, the
-  lock screen, or the secure desktop. Do not pretend otherwise in code or docs.
+  lock screen, or the secure desktop — and, by UIPI, its low-level hook does not
+  even *see* keystrokes going to an elevated window, so a hotkey pressed there
+  fires nothing and looks broken. Do not pretend otherwise in code or docs. The
+  opt-in remedy is Settings → General → "Start as administrator at login"
+  (`elevate.rs`): a `HighestAvailable` scheduled task started at logon, so
+  Palimpsest runs elevated and sees every window. It is off by default, prompts
+  UAC once when enabled (creating the task needs it), and turns off the normal
+  Run-key autostart so the two do not race the single-instance guard.
 
 ## Commits & Pull Requests
 

@@ -9,6 +9,7 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod commands;
+mod elevate;
 mod i18n;
 mod logging;
 mod state;
@@ -45,6 +46,8 @@ fn main() {
             commands::undo,
             commands::get_autostart,
             commands::set_autostart,
+            commands::get_elevated_autostart,
+            commands::set_elevated_autostart,
             commands::open_logs,
             commands::list_processes,
             commands::list_layouts,

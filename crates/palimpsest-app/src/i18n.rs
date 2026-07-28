@@ -41,6 +41,8 @@ pub struct Strings {
     pub diary_locked: &'static str,
     /// Diary: its lock was momentarily unavailable (a poisoned mutex).
     pub diary_busy: &'static str,
+    /// Elevated-autostart: the user dismissed the UAC prompt.
+    pub elevated_cancelled: &'static str,
 }
 
 const EN: Strings = Strings {
@@ -58,6 +60,7 @@ const EN: Strings = Strings {
     diary_password_empty: "Enter a password.",
     diary_locked: "Unlock the diary first.",
     diary_busy: "The diary is busy — try again.",
+    elevated_cancelled: "Cancelled — nothing changed.",
 };
 
 const RU: Strings = Strings {
@@ -75,6 +78,7 @@ const RU: Strings = Strings {
     diary_password_empty: "Введите пароль.",
     diary_locked: "Сначала разблокируйте дневник.",
     diary_busy: "Дневник занят — попробуйте ещё раз.",
+    elevated_cancelled: "Отменено — ничего не изменилось.",
 };
 
 const UK: Strings = Strings {
@@ -92,6 +96,7 @@ const UK: Strings = Strings {
     diary_password_empty: "Уведіть пароль.",
     diary_locked: "Спочатку розблокуйте щоденник.",
     diary_busy: "Щоденник зайнятий — спробуйте ще раз.",
+    elevated_cancelled: "Скасовано — нічого не змінилося.",
 };
 
 const DE: Strings = Strings {
@@ -109,6 +114,7 @@ const DE: Strings = Strings {
     diary_password_empty: "Bitte ein Passwort eingeben.",
     diary_locked: "Zuerst das Tagebuch entsperren.",
     diary_busy: "Das Tagebuch ist beschäftigt — bitte erneut versuchen.",
+    elevated_cancelled: "Abgebrochen — nichts geändert.",
 };
 
 /// The string table for `lang`, resolving [`UiLang::System`] first.

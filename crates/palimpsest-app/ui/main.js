@@ -54,6 +54,7 @@ const el = {
   setUndoHotkey: $("set-undo-hotkey"),
   clearUndoHotkey: $("clear-undo-hotkey"),
   autostart: $("autostart"),
+  elevatedAutostart: $("elevated-autostart"),
   undo: $("undo"),
   openLogs: $("open-logs"),
   history: $("history"),
@@ -853,6 +854,25 @@ function wire() {
     }
   });
 
+  // Elevated autostart triggers a UAC prompt (creating/removing the scheduled
+  // task needs admin). A dismissed prompt comes back as an error, so revert the
+  // checkbox to its real state on any failure rather than leaving it lying.
+  el.elevatedAutostart.addEventListener("change", async () => {
+    if (!ready) return;
+    const want = el.elevatedAutostart.checked;
+    try {
+      await invoke("set_elevated_autostart", { enabled: want });
+      // The backend turns off the normal Run entry when enabling, so mirror that
+      // and lock it out while elevated autostart owns startup.
+      if (want) el.autostart.checked = false;
+      el.autostart.disabled = want;
+      setStatus(want ? t("elevatedAutostartOn") : t("elevatedAutostartOff"));
+    } catch (e) {
+      el.elevatedAutostart.checked = !want; // revert (incl. cancelled UAC)
+      showError(String(e));
+    }
+  });
+
   el.undo.addEventListener("click", async () => {
     try {
       await invoke("undo");
@@ -1014,6 +1034,9 @@ async function init() {
     const config = await invoke("get_config");
     populate(config);
     el.autostart.checked = await invoke("get_autostart");
+    el.elevatedAutostart.checked = await invoke("get_elevated_autostart");
+    // While elevated autostart owns startup, the normal one is redundant.
+    el.autostart.disabled = el.elevatedAutostart.checked;
     setStatus(t("ready"));
   } catch (e) {
     setStatus(t("loadFailed", { error: e }));

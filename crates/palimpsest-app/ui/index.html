@@ -71,6 +71,15 @@
             <input type="checkbox" id="autostart" />
             <span data-i18n="autostart">Launch Palimpsest at login</span>
           </label>
+          <label class="check" style="margin-top: 8px">
+            <input type="checkbox" id="elevated-autostart" />
+            <span data-i18n="elevatedAutostart">Start as administrator at login</span>
+          </label>
+          <span class="hint inline" data-i18n="elevatedAutostartHint">
+            Needed for the hotkeys to work in windows that run as administrator.
+            Sets up a login task with the highest privileges — you'll be asked to
+            confirm once (UAC). Replaces the normal launch-at-login above.
+          </span>
           <div class="field" style="margin-top: 12px">
             <button class="ghost" id="open-logs" type="button" data-i18n="openLogs">Open logs folder</button>
             <span class="hint inline" data-i18n="logsHint">Diagnostics for bug reports. Never contains what you type.</span>

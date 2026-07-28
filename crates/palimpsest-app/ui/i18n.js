@@ -66,6 +66,11 @@ const I18N = {
 
     startupAndLogs: "Startup and diagnostics",
     autostart: "Launch Palimpsest at login",
+    elevatedAutostart: "Start as administrator at login",
+    elevatedAutostartHint:
+      "Needed for the hotkeys to work in windows that run as administrator. Sets up a login task with the highest privileges — you'll be asked to confirm once (UAC). Replaces the normal launch-at-login above.",
+    elevatedAutostartOn: "Palimpsest will start as administrator at login.",
+    elevatedAutostartOff: "Administrator autostart turned off.",
     openLogs: "Open logs folder",
     logsHint: "Diagnostics for bug reports. Never contains what you type.",
 
@@ -236,6 +241,11 @@ const I18N = {
 
     startupAndLogs: "Запуск и диагностика",
     autostart: "Запускать Palimpsest при входе в систему",
+    elevatedAutostart: "Запускать от имени администратора при входе",
+    elevatedAutostartHint:
+      "Нужно, чтобы горячие клавиши работали в окнах, запущенных от имени администратора. Создаётся задача входа с наивысшими правами — потребуется одно подтверждение (UAC). Заменяет обычный автозапуск выше.",
+    elevatedAutostartOn: "Palimpsest будет запускаться от имени администратора при входе.",
+    elevatedAutostartOff: "Автозапуск от администратора выключен.",
     openLogs: "Открыть папку логов",
     logsHint: "Диагностика для сообщений об ошибках. Никогда не содержит набранный текст.",
 
@@ -406,6 +416,11 @@ const I18N = {
 
     startupAndLogs: "Запуск і діагностика",
     autostart: "Запускати Palimpsest під час входу в систему",
+    elevatedAutostart: "Запускати від імені адміністратора під час входу",
+    elevatedAutostartHint:
+      "Потрібно, щоб гарячі клавіші працювали у вікнах, запущених від імені адміністратора. Створюється завдання входу з найвищими правами — знадобиться одне підтвердження (UAC). Замінює звичайний автозапуск вище.",
+    elevatedAutostartOn: "Palimpsest запускатиметься від імені адміністратора під час входу.",
+    elevatedAutostartOff: "Автозапуск від адміністратора вимкнено.",
     openLogs: "Відкрити теку журналів",
     logsHint: "Діагностика для звітів про помилки. Ніколи не містить набраного тексту.",
 
@@ -576,6 +591,11 @@ const I18N = {
 
     startupAndLogs: "Start und Diagnose",
     autostart: "Palimpsest bei der Anmeldung starten",
+    elevatedAutostart: "Bei der Anmeldung als Administrator starten",
+    elevatedAutostartHint:
+      "Nötig, damit die Tastenkürzel in Fenstern funktionieren, die als Administrator laufen. Richtet eine Anmelde-Aufgabe mit höchsten Rechten ein — einmal bestätigen (UAC). Ersetzt den normalen Autostart oben.",
+    elevatedAutostartOn: "Palimpsest startet künftig als Administrator bei der Anmeldung.",
+    elevatedAutostartOff: "Administrator-Autostart deaktiviert.",
     openLogs: "Log-Ordner öffnen",
     logsHint: "Diagnose für Fehlerberichte. Enthält nie, was getippt wird.",
 
