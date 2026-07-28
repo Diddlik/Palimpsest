@@ -90,7 +90,9 @@ Implemented:
 - Tauri 2 tray + settings UI, arranged as tabs — General, Layouts, Hotkeys,
   History, About — covering enable/pause, sensitivity, layout pairs,
   ignore-list, autostart, hotkeys, live correction history, and undo.
-- An optional typing diary, off by default (see Privacy below).
+- An optional typing diary, off by default: keystroke (and optional clipboard)
+  logging, grouped by day, searchable and exportable, and encryptable behind a
+  password (see Privacy below).
 - A fully localized interface — English, Russian, Ukrainian, and German — which
   follows the Windows UI language by default and can be pinned in Settings.
 - Serializable configuration persisted to `%APPDATA%`, applied live (no restart).
@@ -124,13 +126,18 @@ erased from Settings → History:
 - **Learned words** (`user_words.json`) — **on** by default. Undoing a correction
   tells Palimpsest that word was right as typed, and the only way to stop
   correcting it tomorrow is to write it down. One word per undo, nothing else.
-- **Typing diary** (`diary.json`) — **off** by default, and an upgrade never
-  turns it on. This one is a keystroke log: switch it on and every word you type
-  is recorded, grouped by app, not just the corrections. It is there because it
-  is genuinely useful for recovering text a crashed app ate — the same reason
-  Punto Switcher has one — but it is worth being blunt about the trade: anyone
-  who can read your user profile can read it. Nothing is recorded in password
-  fields or ignored apps, it is capped at 500 entries, and one click erases it.
+- **Typing diary** (`diary.json`, its own tab) — **off** by default, and an
+  upgrade never turns it on. This one is a keystroke log, like Punto Switcher's
+  «дневник»: switch it on and every word you type is recorded, grouped by app and
+  by day, searchable, and exportable — not just the corrections. It can also
+  record clipboard text (a separate opt-in). It is genuinely useful for
+  recovering text a crashed app ate, but be blunt about the trade: anyone who can
+  read your user profile can read it — **unless you set a diary password**, which
+  encrypts the file (Argon2id + XChaCha20-Poly1305). A protected diary loads
+  locked and neither shows nor records until you unlock it, and a forgotten
+  password is unrecoverable. Nothing is recorded in password fields or ignored
+  apps, entries under two words are skipped by default, it is capped at 500
+  entries, and one click erases it.
 
 Because Palimpsest uses a global keyboard hook and synthesizes input, antivirus
 and SmartScreen warnings are a real distribution concern. A credible release
@@ -147,10 +154,10 @@ The desktop app is a Tauri 2 tray utility:
 
 - Tray icon with on/paused state; left-click toggles, right-click opens the menu
   (Enabled, Settings, Open logs folder, Quit).
-- Settings window organized as five tabs — **General** (sensitivity, language,
+- Settings window organized as six tabs — **General** (sensitivity, language,
   autostart, logs, updates), **Layouts** (layout pairs, ignore-list),
-  **Hotkeys**, **History** (corrections, learned words, typing diary), and
-  **About** — with changes applying live, no restart.
+  **Hotkeys**, **History** (corrections, learned words), **Diary** (the optional
+  typing diary), and **About** — with changes applying live, no restart.
 - Correction history and an undo-last-correction action, on a hotkey too.
 - Live status and correction events streamed from the engine.
 

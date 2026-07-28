@@ -230,21 +230,134 @@ pub fn clear_user_words(app: AppHandle, state: State<AppState>) {
     state::save_user_words(&app, &state.runtime.user_words());
 }
 
-/// The typing diary, newest stretch last. Empty unless the user switched the
-/// feature on; like the learned-word list, it must always be inspectable in full.
+/// What the Diary tab needs to render itself without exposing entries: whether
+/// recording is on, whether a password is set, and whether it is unlocked this
+/// session. The entries themselves come from [`list_diary`], and only when
+/// unlocked.
+#[derive(serde::Serialize)]
+pub struct DiaryStatus {
+    /// Whether recording is switched on ([`Config::diary_enabled`]).
+    pub enabled: bool,
+    /// Whether a password is set (the file is encrypted).
+    pub protected: bool,
+    /// Whether the diary is usable this session (always true when unprotected).
+    pub unlocked: bool,
+    /// How many entries are currently held (0 while locked).
+    pub count: usize,
+}
+
+/// The Diary tab's state, without ever handing back locked contents.
+#[tauri::command]
+pub fn diary_status(state: State<AppState>) -> DiaryStatus {
+    let enabled = state.runtime.config().diary_enabled;
+    let ds = state.diary.lock().ok();
+    DiaryStatus {
+        enabled,
+        protected: ds.as_ref().map(|d| d.protected).unwrap_or(false),
+        unlocked: ds.as_ref().map(|d| d.unlocked).unwrap_or(false),
+        count: ds.as_ref().map(|d| d.diary.entries.len()).unwrap_or(0),
+    }
+}
+
+/// The typing diary, newest stretch last. Returns an empty diary while locked —
+/// the contents never leave the backend without the password. When unprotected
+/// or unlocked it must be inspectable in full, like the learned-word list.
 #[tauri::command]
 pub fn list_diary(state: State<AppState>) -> Diary {
-    state.diary.lock().map(|d| d.clone()).unwrap_or_default()
+    match state.diary.lock() {
+        Ok(ds) if ds.unlocked => ds.diary.clone(),
+        _ => Diary::default(),
+    }
+}
+
+/// Unlock a password-protected diary for this session: decrypt it into memory and
+/// keep the key so recording can resume. Returns a user-facing error on the wrong
+/// password. A no-op when the diary isn't protected.
+#[tauri::command]
+pub fn unlock_diary(app: AppHandle, state: State<AppState>, password: String) -> Result<(), String> {
+    let lang = state.runtime.config().ui_language;
+    let sealed = match state::read_sealed_diary(&app) {
+        Some(s) => s,
+        None => return Ok(()), // not protected (or gone) — nothing to unlock
+    };
+    match palimpsest_core::crypt::open(&sealed, &password) {
+        Ok((plaintext, key)) => {
+            let diary: palimpsest_core::Diary =
+                serde_json::from_slice(&plaintext).unwrap_or_default();
+            if let Ok(mut ds) = state.diary.lock() {
+                ds.diary = diary;
+                ds.protected = true;
+                ds.unlocked = true;
+                ds.key = Some(key);
+            }
+            Ok(())
+        }
+        Err(_) => Err(i18n::strings(lang).diary_wrong_password.to_string()),
+    }
+}
+
+/// Set (or change) the diary password, encrypting the file from now on. Requires
+/// the diary to be currently usable — you can only encrypt entries you can see —
+/// so a protected diary must be unlocked first. Rejects an empty password.
+#[tauri::command]
+pub fn set_diary_password(app: AppHandle, state: State<AppState>, password: String) -> Result<(), String> {
+    let lang = state.runtime.config().ui_language;
+    let s = i18n::strings(lang);
+    if password.trim().is_empty() {
+        return Err(s.diary_password_empty.to_string());
+    }
+    let mut ds = state.diary.lock().map_err(|_| s.diary_busy.to_string())?;
+    if ds.protected && !ds.unlocked {
+        return Err(s.diary_locked.to_string());
+    }
+    ds.key = Some(palimpsest_core::crypt::Unlocked::new(&password));
+    ds.protected = true;
+    ds.unlocked = true;
+    state::save_diary(&app, &ds);
+    Ok(())
+}
+
+/// Remove the diary password, rewriting the file as plaintext. Requires the
+/// diary to be unlocked (you cannot decrypt to plaintext without the key).
+#[tauri::command]
+pub fn clear_diary_password(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let lang = state.runtime.config().ui_language;
+    let s = i18n::strings(lang);
+    let mut ds = state.diary.lock().map_err(|_| s.diary_busy.to_string())?;
+    if ds.protected && !ds.unlocked {
+        return Err(s.diary_locked.to_string());
+    }
+    ds.protected = false;
+    ds.key = None;
+    state::save_diary(&app, &ds);
+    Ok(())
 }
 
 /// Erase the diary, in memory and on disk — the escape hatch that makes the
-/// whole feature reversible.
+/// whole feature reversible. Keeps any password in place.
 #[tauri::command]
 pub fn clear_diary(app: AppHandle, state: State<AppState>) {
-    if let Ok(mut diary) = state.diary.lock() {
-        diary.clear();
-        state::save_diary(&app, &diary);
+    if let Ok(mut ds) = state.diary.lock() {
+        ds.diary.clear();
+        state::save_diary(&app, &ds);
     }
+}
+
+/// Export the (unlocked) diary to a plain-text file and reveal it in Explorer,
+/// selected. Returns the path. Refuses while locked. Uses a fixed file beside the
+/// config rather than a save dialog, so it needs no extra plugin or permission.
+#[tauri::command]
+pub fn export_diary(app: AppHandle, state: State<AppState>) -> Result<String, String> {
+    let lang = state.runtime.config().ui_language;
+    let s = i18n::strings(lang);
+    let diary = {
+        let ds = state.diary.lock().map_err(|_| s.diary_busy.to_string())?;
+        if !ds.unlocked {
+            return Err(s.diary_locked.to_string());
+        }
+        ds.diary.clone()
+    };
+    state::export_diary_text(&app, &diary).map_err(|e| e.to_string())
 }
 
 /// This build's version, for the About pane. Read from the bundle metadata so it

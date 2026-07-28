@@ -55,8 +55,13 @@ fn main() {
             commands::list_user_words,
             commands::forget_word,
             commands::clear_user_words,
+            commands::diary_status,
             commands::list_diary,
+            commands::unlock_diary,
+            commands::set_diary_password,
+            commands::clear_diary_password,
             commands::clear_diary,
+            commands::export_diary,
             commands::app_version,
             commands::check_update,
             commands::install_update,
@@ -130,20 +135,29 @@ fn main() {
                         }
                         // The engine only emits this while the diary is switched
                         // on, so nothing is recorded by default.
-                        palimpsest_core::EngineEvent::Typed { at, app, word } => {
+                        palimpsest_core::EngineEvent::Typed { at, app, word, clip } => {
                             if let Some(app_state) = event_handle.try_state::<AppState>().as_deref()
                             {
-                                if let Ok(mut diary) = app_state.diary.lock() {
-                                    diary.push(*at, app, word);
+                                if let Ok(mut ds) = app_state.diary.lock() {
+                                    // A locked (password-protected, not yet
+                                    // unlocked) diary records nothing — there is no
+                                    // key to persist it with.
+                                    if ds.unlocked {
+                                        if *clip {
+                                            ds.diary.push_clip(*at, app, word);
+                                        } else {
+                                            ds.diary.push(*at, app, word);
+                                        }
+                                    }
                                 }
                             }
                             unflushed += 1;
                             if unflushed >= DIARY_FLUSH_EVERY {
                                 unflushed = 0;
-                                state::flush_diary(&event_handle);
+                                state::flush_diary(&event_handle, false);
                             }
                             // Typed text is not pushed to the webview per word —
-                            // the History pane reads the diary on demand.
+                            // the Diary tab reads the diary on demand.
                             continue;
                         }
                         _ => {}
@@ -158,6 +172,10 @@ fn main() {
                 tray,
                 diary: std::sync::Mutex::new(state::load_diary(&handle)),
             });
+
+            // If the diary loaded already unlocked (no password) but recording is
+            // off, that's fine; the relay above only appends when the engine
+            // emits, which it does only while the feature is on.
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -181,8 +199,9 @@ fn main() {
                     api.prevent_exit();
                 } else {
                     // Last chance to write out the words the batching relay is
-                    // still holding.
-                    state::flush_diary(app);
+                    // still holding; a final flush also drops a trailing lone word
+                    // under the short-entry guard.
+                    state::flush_diary(app, true);
                 }
             }
         });

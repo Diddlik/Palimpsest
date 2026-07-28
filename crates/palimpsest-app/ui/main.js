@@ -61,7 +61,21 @@ const el = {
   words: $("words"),
   clearWords: $("clear-words"),
   diaryEnabled: $("diary-enabled"),
+  diaryClipboard: $("diary-clipboard"),
+  diarySkipShort: $("diary-skip-short"),
+  diaryProtectionState: $("diary-protection-state"),
+  diarySetPwRow: $("diary-set-pw-row"),
+  diaryPw: $("diary-pw"),
+  diaryPw2: $("diary-pw2"),
+  diarySetPw: $("diary-set-pw"),
+  diaryClearPw: $("diary-clear-pw"),
+  diaryLocked: $("diary-locked"),
+  diaryUnlockPw: $("diary-unlock-pw"),
+  diaryUnlock: $("diary-unlock"),
+  diaryOpen: $("diary-open"),
+  diarySearch: $("diary-search"),
   diary: $("diary"),
+  diaryExport: $("diary-export"),
   clearDiary: $("clear-diary"),
   aboutVersion: $("about-version"),
   checkUpdate: $("check-update"),
@@ -185,8 +199,8 @@ function showPane(name) {
   }
   document.querySelector("main").scrollTop = 0;
   // The diary is written by the backend in batches, not pushed per word, so it
-  // is re-read whenever its pane comes into view.
-  if (name === "history") loadDiary();
+  // is re-read (and its lock state re-checked) whenever its pane comes into view.
+  if (name === "diary") refreshDiary();
 }
 
 // ----- Layout pair rows ------------------------------------------------------
@@ -333,6 +347,8 @@ function populate(config) {
   renderHotkey();
   el.learnOnUndo.checked = config.learn_on_undo !== false;
   el.diaryEnabled.checked = config.diary_enabled === true;
+  el.diaryClipboard.checked = config.diary_capture_clipboard === true;
+  el.diarySkipShort.checked = config.diary_skip_short !== false;
   el.ignore.value = (config.ignore_processes || []).join("\n");
 
   el.pairs.innerHTML = "";
@@ -355,6 +371,8 @@ function gather() {
     undo_hotkey_mods: currentUndoMods,
     learn_on_undo: el.learnOnUndo.checked,
     diary_enabled: el.diaryEnabled.checked,
+    diary_capture_clipboard: el.diaryClipboard.checked,
+    diary_skip_short: el.diarySkipShort.checked,
     ui_language: el.uiLanguage.value,
   };
 }
@@ -567,11 +585,39 @@ function layoutNameForLang(lang) {
 
 // ----- Typing diary ----------------------------------------------------------
 
-// The opt-in keystroke log. It is the most sensitive thing the app can hold, so
-// it is shown here in full, newest first, and erasable in one click.
+// The opt-in keystroke log — the most sensitive thing the app can hold. It gets
+// its own tab, shown in full (newest first, grouped by day, searchable), can be
+// exported and erased, and can be encrypted behind a password that gates both
+// viewing and recording.
 let diaryEntries = [];
+let diaryStatus = { enabled: false, protected: false, unlocked: false, count: 0 };
 
-async function loadDiary() {
+// Pull the diary's lock state, then its entries if we're allowed to see them,
+// and lay the pane out accordingly. Called whenever the pane opens or its state
+// could have changed (toggled recording, set/cleared password, unlocked).
+async function refreshDiary() {
+  try {
+    diaryStatus = await invoke("diary_status");
+  } catch (e) {
+    setStatus(t("error", { error: e }));
+    return;
+  }
+
+  const locked = diaryStatus.protected && !diaryStatus.unlocked;
+  el.diaryLocked.hidden = !locked;
+  el.diaryOpen.hidden = locked;
+  // Protection card: offer "set" when open, "remove" when a password exists.
+  el.diaryProtectionState.textContent = diaryStatus.protected
+    ? t("diaryProtected")
+    : t("diaryUnprotected");
+  el.diarySetPwRow.hidden = diaryStatus.protected && diaryStatus.unlocked === false;
+  el.diaryClearPw.hidden = !(diaryStatus.protected && diaryStatus.unlocked);
+  el.diarySetPw.textContent = diaryStatus.protected ? t("diaryChangePw") : t("diarySetPw");
+
+  if (locked) {
+    diaryEntries = [];
+    return;
+  }
   try {
     const diary = await invoke("list_diary");
     diaryEntries = diary.entries || [];
@@ -582,40 +628,109 @@ async function loadDiary() {
   renderDiary();
 }
 
-// Unix seconds → the user's locale format. Falls back to the raw stamp if the
+async function unlockDiary() {
+  const pw = el.diaryUnlockPw.value;
+  if (!pw) return;
+  try {
+    await invoke("unlock_diary", { password: pw });
+    el.diaryUnlockPw.value = "";
+    await refreshDiary();
+    setStatus(t("diaryUnlocked"));
+  } catch (e) {
+    showError(String(e));
+  }
+}
+
+// Unix seconds → the user's locale time. Falls back to the raw stamp if the
 // runtime dislikes the value, rather than rendering "Invalid Date".
-function stamp(secs) {
+function stampTime(secs) {
   const d = new Date(secs * 1000);
-  return isNaN(d) ? String(secs) : d.toLocaleString(LOCALE);
+  return isNaN(d) ? String(secs) : d.toLocaleTimeString(LOCALE);
+}
+
+// The day an entry belongs to, for the date headers.
+function stampDay(secs) {
+  const d = new Date(secs * 1000);
+  return isNaN(d) ? String(secs) : d.toLocaleDateString(LOCALE, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+  });
+}
+
+// Copy to the clipboard. `navigator.clipboard` works in the webview's secure
+// context; the execCommand path is a fallback for anything that refuses it.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch {}
+    ta.remove();
+  }
+  showToast(t("copied"));
 }
 
 function renderDiary() {
   el.diary.innerHTML = "";
-  if (diaryEntries.length === 0) {
+
+  const term = (el.diarySearch.value || "").trim().toLowerCase();
+  const matches = diaryEntries.filter(
+    (e) => !term || e.text.toLowerCase().includes(term) || (e.app || "").toLowerCase().includes(term),
+  );
+
+  if (matches.length === 0) {
     const li = document.createElement("li");
     li.className = "empty";
-    // Distinguish "switched off" from "on but nothing typed yet" — otherwise an
-    // empty list reads as a broken feature.
-    const key = el.diaryEnabled.checked ? "diaryEmpty" : "diaryOff";
-    li.dataset.i18n = key;
+    // Distinguish off / on-but-empty / no-search-match so an empty list never
+    // reads as a broken feature.
+    const key = term ? "diaryNoMatch" : diaryStatus.enabled ? "diaryEmpty" : "diaryOff";
     li.textContent = t(key);
     el.diary.append(li);
     return;
   }
 
-  for (const entry of [...diaryEntries].reverse()) {
+  // Newest first, with a header each time the day changes.
+  let lastDay = null;
+  for (const entry of [...matches].reverse()) {
+    const day = stampDay(entry.at);
+    if (day !== lastDay) {
+      lastDay = day;
+      const head = document.createElement("li");
+      head.className = "date-head";
+      head.textContent = day;
+      el.diary.append(head);
+    }
+
     const li = document.createElement("li");
+    const rowHead = document.createElement("div");
+    rowHead.className = "row-head";
     const meta = document.createElement("span");
     meta.className = "meta";
     const when = document.createElement("span");
-    when.textContent = stamp(entry.at);
+    when.textContent = stampTime(entry.at);
     const app = document.createElement("span");
+    app.className = "app";
     app.textContent = entry.app || t("unknownApp");
     meta.append(when, app);
+    if (entry.clip) {
+      const tag = document.createElement("span");
+      tag.className = "clip-tag";
+      tag.textContent = t("diaryClipTag");
+      meta.append(tag);
+    }
+    const copy = document.createElement("button");
+    copy.className = "ghost copy";
+    copy.type = "button";
+    copy.textContent = t("copy");
+    copy.addEventListener("click", () => copyText(entry.text));
+    rowHead.append(meta, copy);
+
     const text = document.createElement("span");
     text.className = "text";
     text.textContent = entry.text;
-    li.append(meta, text);
+    li.append(rowHead, text);
     el.diary.append(li);
   }
 }
@@ -774,13 +889,66 @@ function wire() {
       return;
     }
     await apply();
-    renderDiary(); // the empty-state line differs between on and off
+    await refreshDiary();
+  });
+
+  el.diaryClipboard.addEventListener("change", apply);
+  el.diarySkipShort.addEventListener("change", apply);
+  el.diarySearch.addEventListener("input", renderDiary);
+
+  el.diarySetPw.addEventListener("click", async () => {
+    const pw = el.diaryPw.value;
+    if (!pw) {
+      showError(t("diaryPwEmpty"));
+      return;
+    }
+    if (pw !== el.diaryPw2.value) {
+      showError(t("diaryPwMismatch"));
+      return;
+    }
+    if (!confirm(t("diaryPwConfirm"))) return;
+    try {
+      await invoke("set_diary_password", { password: pw });
+      el.diaryPw.value = "";
+      el.diaryPw2.value = "";
+      await refreshDiary();
+      setStatus(t("diaryPwSet"));
+    } catch (e) {
+      showError(String(e));
+    }
+  });
+
+  el.diaryClearPw.addEventListener("click", async () => {
+    if (!confirm(t("diaryClearPwConfirm"))) return;
+    try {
+      await invoke("clear_diary_password");
+      await refreshDiary();
+      setStatus(t("diaryPwRemoved"));
+    } catch (e) {
+      showError(String(e));
+    }
+  });
+
+  el.diaryUnlock.addEventListener("click", unlockDiary);
+  el.diaryUnlockPw.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") unlockDiary();
+  });
+
+  el.diaryExport.addEventListener("click", async () => {
+    try {
+      const path = await invoke("export_diary");
+      showToast(t("diaryExported"));
+      setStatus(t("diaryExportedTo", { path }));
+    } catch (e) {
+      showError(String(e));
+    }
   });
 
   el.clearDiary.addEventListener("click", async () => {
+    if (!confirm(t("diaryClearConfirm"))) return;
     try {
       await invoke("clear_diary");
-      await loadDiary();
+      await refreshDiary();
       setStatus(t("diaryCleared"));
     } catch (e) {
       setStatus(t("error", { error: e }));
@@ -850,7 +1018,6 @@ async function init() {
   } catch (e) {
     setStatus(t("loadFailed", { error: e }));
   }
-  await loadDiary(); // after `populate`, so the empty line knows on from off
   try {
     appVersion = await invoke("app_version");
     renderAbout();

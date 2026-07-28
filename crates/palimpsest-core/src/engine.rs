@@ -187,6 +187,10 @@ struct Engine {
     /// Currently-held modifier keys (bitmask of `MOD_*`), tracked from the key
     /// stream so chorded hotkeys can be recognised.
     mods: u8,
+    /// Last clipboard sequence number the diary-capture watcher saw, so it only
+    /// reads the clipboard when it actually changes — and can skip the change
+    /// Palimpsest's own selection conversion causes.
+    clip_seq: u32,
 }
 
 impl Engine {
@@ -205,6 +209,7 @@ impl Engine {
             last_correction: None,
             events,
             mods: 0,
+            clip_seq: clipboard::sequence(),
         }
     }
 
@@ -327,6 +332,49 @@ impl Engine {
             at: now_secs(),
             app,
             word: word.to_string(),
+            clip: false,
+        });
+    }
+
+    /// Idle-tick work: capture the clipboard into the diary when that opt-in is
+    /// on. Runs on the engine's poll tick, not the hook path, so it never touches
+    /// input latency.
+    ///
+    /// It watches the lock-free clipboard sequence counter and reads only when it
+    /// moves — the same discipline the selection hotkey uses, for the same reason
+    /// (never hammer `OpenClipboard`). It ignores the bump caused by Palimpsest's
+    /// own selection-conversion writes, which reset [`Engine::clip_seq`] on the way
+    /// out.
+    fn on_tick(&mut self) {
+        let config = self.config.load();
+        if !config.enabled || !config.diary_enabled || !config.diary_capture_clipboard {
+            // Keep the baseline current while the feature is off, so turning it on
+            // doesn't immediately capture whatever was copied earlier.
+            self.clip_seq = clipboard::sequence();
+            return;
+        }
+        let seq = clipboard::sequence();
+        if seq == self.clip_seq {
+            return;
+        }
+        self.clip_seq = seq;
+        // Same context gate as typed words: nothing from a password field or an
+        // ignore-listed app.
+        if self.blocked(&config).is_some() {
+            return;
+        }
+        let Some(text) = clipboard::get_text() else { return };
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        let app = self.context.foreground_exe().unwrap_or_default();
+        // Privacy: copied text, like typed text, never goes to `tracing`.
+        let _ = self.events.send(EngineEvent::Typed {
+            at: now_secs(),
+            app,
+            word: text.to_string(),
+            clip: true,
         });
     }
 
@@ -445,6 +493,9 @@ impl Engine {
             return;
         }
         restore_clipboard(saved);
+        // Our own copy + restore bumped the clipboard counter; move the diary
+        // watcher's baseline past it so it doesn't record the selection as a copy.
+        self.clip_seq = clipboard::sequence();
 
         // The caret now sits inside converted text, so whatever word `last` named
         // is no longer the thing behind it.
@@ -586,8 +637,9 @@ pub fn run(
                 Ok(Command::Undo) => engine.on_undo(),
                 Err(_) => {} // UI dropped its sender; keep running until `running` clears
             },
-            // Wake periodically so a cleared `running` flag is noticed promptly.
-            default(POLL_INTERVAL) => {}
+            // Wake periodically so a cleared `running` flag is noticed promptly;
+            // also the beat the opt-in clipboard-capture watcher runs on.
+            default(POLL_INTERVAL) => engine.on_tick(),
         }
     }
 }

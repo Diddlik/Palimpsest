@@ -29,6 +29,7 @@
       <button type="button" class="tab" data-pane="layouts" data-i18n="tabLayouts">Layouts</button>
       <button type="button" class="tab" data-pane="hotkeys" data-i18n="tabHotkeys">Hotkeys</button>
       <button type="button" class="tab" data-pane="history" data-i18n="tabHistory">History</button>
+      <button type="button" class="tab" data-pane="diary" data-i18n="tabDiary">Diary</button>
       <button type="button" class="tab" data-pane="about" data-i18n="tabAbout">About</button>
     </nav>
 
@@ -190,26 +191,85 @@
             <li class="empty" data-i18n="nothingLearned">Nothing learned yet.</li>
           </ul>
         </div>
+      </section>
 
+      <section class="pane" data-pane="diary">
         <div class="card">
           <div class="card-head">
             <h2 data-i18n="diary">Typing diary</h2>
-            <button class="ghost" id="clear-diary" type="button" data-i18n="clearDiary">Erase diary</button>
+            <label class="check inline">
+              <input type="checkbox" id="diary-enabled" />
+              <span data-i18n="diaryEnabled">Record</span>
+            </label>
           </div>
-          <label class="check">
-            <input type="checkbox" id="diary-enabled" />
-            <span data-i18n="diaryEnabled">Keep a diary of everything I type</span>
-          </label>
           <p class="warn" data-i18n-html="diaryWarning">
             <strong>This is a keystroke log.</strong> With it on, every word you
-            type is written to <code>diary.json</code> on this machine — not just
-            corrections. Anyone with access to your user profile can read it.
-            Nothing is recorded in password fields or ignored apps, nothing is
-            ever sent anywhere, and it is off unless you switch it on here.
+            type is written to disk on this machine — not just corrections. Anyone
+            with access to your user profile can read it unless you protect it with
+            a password below. Nothing is recorded in password fields or ignored
+            apps, nothing is ever sent anywhere, and it is off unless you switch it
+            on here.
           </p>
-          <ul id="diary" class="history diary">
-            <li class="empty" data-i18n="diaryOff">The diary is off. Nothing is being recorded.</li>
-          </ul>
+
+          <div class="diary-options">
+            <label class="check">
+              <input type="checkbox" id="diary-clipboard" />
+              <span data-i18n="diaryClipboard">Also record clipboard (copied text)</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="diary-skip-short" />
+              <span data-i18n="diarySkipShort">Skip entries shorter than two words</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="diaryProtection">Password</h2>
+            <span id="diary-protection-state" class="tag"></span>
+          </div>
+          <p class="hint" data-i18n="diaryProtectionHint">
+            A password encrypts the diary on disk so it can't be read without it.
+            You'll need it to view the diary each time you open Palimpsest. It
+            cannot be recovered — if you forget it, the diary is lost for good.
+          </p>
+          <div class="diary-pw-row" id="diary-set-pw-row">
+            <input type="password" id="diary-pw" data-i18n-placeholder="diaryPwPlaceholder" placeholder="New password" autocomplete="new-password" />
+            <input type="password" id="diary-pw2" data-i18n-placeholder="diaryPw2Placeholder" placeholder="Repeat password" autocomplete="new-password" />
+            <button class="ghost" id="diary-set-pw" type="button" data-i18n="diarySetPw">Set password</button>
+          </div>
+          <button class="ghost" id="diary-clear-pw" type="button" hidden data-i18n="diaryClearPw">Remove password</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="diaryEntries">Entries</h2>
+            <div class="diary-actions">
+              <button class="ghost" id="diary-export" type="button" data-i18n="diaryExport">Export…</button>
+              <button class="ghost" id="clear-diary" type="button" data-i18n="clearDiary">Erase diary</button>
+            </div>
+          </div>
+
+          <!-- Unlock prompt, shown only when the diary is password-protected and
+               still locked this session. -->
+          <div id="diary-locked" class="diary-unlock" hidden>
+            <p class="hint" data-i18n="diaryLockedHint">
+              The diary is locked. Enter your password to view it and resume
+              recording.
+            </p>
+            <div class="diary-pw-row">
+              <input type="password" id="diary-unlock-pw" data-i18n-placeholder="diaryPwPlaceholder" placeholder="Password" autocomplete="current-password" />
+              <button class="ghost" id="diary-unlock" type="button" data-i18n="diaryUnlock">Unlock</button>
+            </div>
+          </div>
+
+          <!-- The list and its search, shown when the diary is readable. -->
+          <div id="diary-open" hidden>
+            <input type="search" id="diary-search" data-i18n-placeholder="diarySearch" placeholder="Search…" spellcheck="false" />
+            <ul id="diary" class="history diary">
+              <li class="empty" data-i18n="diaryOff">The diary is off. Nothing is being recorded.</li>
+            </ul>
+          </div>
         </div>
       </section>
 

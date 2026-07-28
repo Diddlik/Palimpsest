@@ -44,6 +44,8 @@ pub use buffer::{Key, WordBuffer};
 pub mod config;
 pub use config::{is_ignored, migrate_legacy_hotkeys, Config, LayoutPair, UiLang};
 
+pub mod crypt;
+
 pub mod diary;
 pub use diary::{Diary, DiaryEntry};
 

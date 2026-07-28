@@ -169,6 +169,17 @@ pub struct Config {
     /// `AGENT_INSTRUCTIONS.md`.
     #[serde(default)]
     pub diary_enabled: bool,
+    /// Whether the diary also captures **clipboard** text, not just typed words.
+    /// A copy is recorded as its own entry. Off by default and only ever consulted
+    /// while [`diary_enabled`] is on; like the diary itself it records nothing from
+    /// a blocked context (password field / ignored app). See [`crate::diary`].
+    #[serde(default)]
+    pub diary_capture_clipboard: bool,
+    /// Whether the diary drops entries shorter than two words — Punto Switcher's
+    /// guard against logging a lone password or username. On by default; clipboard
+    /// captures are exempt. See [`crate::diary::Diary::prune_short`].
+    #[serde(default = "default_true")]
+    pub diary_skip_short: bool,
     /// Whether undoing a correction teaches Palimpsest that the word was right
     /// as typed, so it stops correcting it. This is the one path that writes
     /// typed text to disk (see [`crate::user_dict`]), so it is switchable —
@@ -218,6 +229,8 @@ impl Default for Config {
             undo_hotkey: 0x79, // VK_F10 — with Ctrl+Shift below: Ctrl+Shift+F10
             undo_hotkey_mods: MOD_CONTROL | MOD_SHIFT,
             diary_enabled: false, // a keystroke log is never on unless asked for
+            diary_capture_clipboard: false,
+            diary_skip_short: true,
             learn_on_undo: true,
             ui_language: UiLang::System,
         }
@@ -318,6 +331,10 @@ mod tests {
         assert!(!Config::default().diary_enabled);
         let older: Config = serde_json::from_str(r#"{ "enabled": true }"#).unwrap();
         assert!(!older.diary_enabled);
+        assert!(!older.diary_capture_clipboard);
+        // The short-entry guard defaults on, so an older file gains the safer
+        // behaviour rather than logging lone words.
+        assert!(older.diary_skip_short);
     }
 
     #[test]

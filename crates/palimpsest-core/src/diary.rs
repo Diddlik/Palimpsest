@@ -21,7 +21,8 @@
 //!
 //! Entries are grouped rather than stored per word: consecutive words typed in
 //! the same app within [`MERGE_GAP_SECS`] join one entry, which is what makes the
-//! list readable instead of a column of single words.
+//! list readable instead of a column of single words. A clipboard capture is
+//! always its own entry (copying is a discrete act) and never merges with typing.
 
 use std::collections::VecDeque;
 
@@ -34,18 +35,29 @@ pub const MAX_ENTRIES: usize = 500;
 /// the same entry instead of starting a new one.
 const MERGE_GAP_SECS: u64 = 60;
 
-/// One stretch of typing in one app.
+/// One stretch of typing (or one clipboard capture) in one app.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DiaryEntry {
     /// Unix seconds when the stretch started.
     pub at: u64,
     /// Executable name of the app it was typed into, e.g. `"notepad.exe"`.
     pub app: String,
-    /// The words, space-separated, as they appeared on screen.
+    /// The words, space-separated, as they appeared on screen — or, for a
+    /// clipboard capture, the copied text.
     pub text: String,
     /// Unix seconds of the most recent word appended, so a stretch that has gone
     /// quiet does not keep absorbing later typing.
     pub until: u64,
+    /// `true` when this entry came from the clipboard rather than the keyboard.
+    /// Clipboard captures are deliberate, so they are exempt from the short-entry
+    /// guard ([`Diary::prune_short`]).
+    #[serde(default)]
+    pub clip: bool,
+}
+
+/// Words in `text`, used by the short-entry guard.
+fn word_count(text: &str) -> usize {
+    text.split_whitespace().count()
 }
 
 /// The recorded stretches, oldest first.
@@ -57,16 +69,35 @@ pub struct Diary {
 
 impl Diary {
     /// Record one word typed in `app` at `at` (unix seconds). Appends to the
-    /// current stretch when it is the same app and still recent, otherwise starts
-    /// a new one; drops the oldest entry once [`MAX_ENTRIES`] is reached.
+    /// current stretch when it is the same app, still recent, and also typed
+    /// (never a clipboard entry); otherwise starts a new one. Drops the oldest
+    /// entry once [`MAX_ENTRIES`] is reached.
     pub fn push(&mut self, at: u64, app: &str, word: &str) {
-        if word.is_empty() {
+        self.record(at, app, word, false);
+    }
+
+    /// Record a clipboard capture: always its own entry, flagged [`clip`], never
+    /// merged into surrounding typing.
+    ///
+    /// [`clip`]: DiaryEntry::clip
+    pub fn push_clip(&mut self, at: u64, app: &str, text: &str) {
+        self.record(at, app, text, true);
+    }
+
+    fn record(&mut self, at: u64, app: &str, text: &str, clip: bool) {
+        if text.is_empty() {
             return;
         }
         match self.entries.back_mut() {
-            Some(last) if last.app == app && at.saturating_sub(last.until) <= MERGE_GAP_SECS => {
+            // Only typed words merge, and only into another typed stretch.
+            Some(last)
+                if !clip
+                    && !last.clip
+                    && last.app == app
+                    && at.saturating_sub(last.until) <= MERGE_GAP_SECS =>
+            {
                 last.text.push(' ');
-                last.text.push_str(word);
+                last.text.push_str(text);
                 last.until = at;
             }
             _ => {
@@ -76,11 +107,28 @@ impl Diary {
                 self.entries.push_back(DiaryEntry {
                     at,
                     app: app.to_string(),
-                    text: word.to_string(),
+                    text: text.to_string(),
                     until: at,
+                    clip,
                 });
             }
         }
+    }
+
+    /// Drop typed entries shorter than two words — Punto Switcher's guard against
+    /// logging a lone password or username. Clipboard captures are always kept
+    /// (copying is deliberate). When `include_last` is false the most recent entry
+    /// is spared, because it may still be growing into a longer stretch; pass
+    /// `true` on a final flush, when nothing more will be appended.
+    pub fn prune_short(&mut self, include_last: bool) {
+        let last = self.entries.len().saturating_sub(1);
+        let mut i = 0;
+        self.entries.retain(|e| {
+            let spare_growing = !include_last && i == last;
+            let keep = e.clip || word_count(&e.text) >= 2 || spare_growing;
+            i += 1;
+            keep
+        });
     }
 
     /// Erase everything — the escape hatch that makes the whole feature
@@ -138,6 +186,37 @@ mod tests {
         let mut d = Diary::default();
         d.push(1, "notepad.exe", "");
         assert!(d.is_empty());
+    }
+
+    #[test]
+    fn a_clipboard_capture_is_its_own_entry_and_does_not_merge() {
+        let mut d = Diary::default();
+        d.push(100, "notepad.exe", "typing");
+        d.push_clip(105, "notepad.exe", "copied text");
+        d.push(110, "notepad.exe", "more");
+        // Three entries: the clipboard capture breaks the typed stretch in two.
+        assert_eq!(d.entries.len(), 3);
+        assert!(d.entries[1].clip);
+        assert!(!d.entries[0].clip && !d.entries[2].clip);
+    }
+
+    #[test]
+    fn prune_short_drops_lone_typed_words_but_keeps_clips_and_the_open_entry() {
+        let mut d = Diary::default();
+        d.push(100, "a.exe", "hi"); // 1 word, closed → dropped
+        d.push_clip(200, "b.exe", "x"); // clip, 1 word → kept
+        d.push(300, "c.exe", "two words"); // 2 words → kept
+        d.push(400, "d.exe", "tail"); // 1 word, last/open → spared when include_last=false
+
+        let mut open = d.clone();
+        open.prune_short(false);
+        assert_eq!(open.entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
+            vec!["x", "two words", "tail"]);
+
+        // On a final flush the trailing lone word goes too.
+        d.prune_short(true);
+        assert_eq!(d.entries.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
+            vec!["x", "two words"]);
     }
 
     #[test]

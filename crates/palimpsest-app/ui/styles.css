@@ -213,8 +213,29 @@ button.icon:hover { background: rgba(200,85,61,.12); }
 /* Diary rows stack (timestamp + app above the text) rather than truncating to
    one line — a stretch of typing is a sentence, not a word. */
 .history.diary li { flex-direction: column; align-items: stretch; gap: 3px; }
-.diary .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; }
+.history.diary li.date-head {
+  background: transparent; padding: 10px 0 2px; color: var(--muted);
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+}
+.diary .row-head { display: flex; align-items: baseline; gap: 8px; }
+.diary .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; flex: 1; min-width: 0; }
+.diary .meta .app { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diary .clip-tag { font-size: 10px; color: var(--accent-bright); flex: 0 0 auto; }
 .diary .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.diary .copy { flex: 0 0 auto; padding: 2px 8px; font-size: 11px; }
+
+/* Diary controls */
+.diary-options { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.diary-actions { display: flex; gap: 8px; }
+.diary-pw-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.diary-pw-row input { flex: 1 1 140px; min-width: 0; }
+.diary-unlock { margin-top: 6px; }
+#diary-search { width: 100%; margin: 4px 0 8px; }
+input[type="password"], input[type="search"] {
+  background: var(--card-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px; font: inherit;
+}
+.card-head .tag { margin-left: auto; }
 
 /* About */
 .credits { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }

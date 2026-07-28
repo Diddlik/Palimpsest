@@ -38,9 +38,9 @@ Rust workspace, two crates:
   Edit the text files, never the generated FSTs. See "Scoring Data" below.
 - `crates/palimpsest-app` — Tauri 2 tray/settings app: commands, logging, state,
   capabilities, icons, static UI under `ui/`. The settings window is a tab bar
-  over five panes (General, Layouts, Hotkeys, History, About); a `.pane` is shown
-  by `.active`, and `main.js` keeps exactly one tab and one pane marked. User-
-  facing text is localized — see "Localization" below.
+  over six panes (General, Layouts, Hotkeys, History, Diary, About); a `.pane` is
+  shown by `.active`, and `main.js` keeps exactly one tab and one pane marked.
+  User-facing text is localized — see "Localization" below.
 - `crates/palimpsest-core/examples` — manual Windows spike programs
   (`spike_hook`, `spike_correct`, `spike_context`); interactive, not a substitute
   for tests.
@@ -288,17 +288,37 @@ desktop is manual and must be flagged as such, not automated away.
     Switchable via `Config::learn_on_undo` (**on** by default), listed and
     individually erasable in Settings → History → Learned words. Do not extend it
     to phrases, context, or frequency counts.
-  - The **typing diary** (`diary.rs`, `diary.json`). This one is a keystroke log:
-    every word the engine sees, grouped by app, whether or not it was corrected.
-    It exists because it was asked for (issue #1, the Punto Switcher "дневник"),
-    and it is fenced accordingly — `Config::diary_enabled` is **off** by default
-    and an upgrade never turns it on, the UI confirms before enabling and carries
-    a plain-language warning, entries are capped at `diary::MAX_ENTRIES`, and
-    Settings → History → Typing diary shows the lot and erases it in one click.
-    Nothing reaches it from a blocked context: the engine records only after
-    `blocked()` has cleared the foreground window, so password fields and
-    ignore-listed apps produce no entries. Do not add a "just this once" bypass
-    of any of that, and do not let it become the default.
+  - The **typing diary** (`diary.rs`, `diary.json`, its own Diary tab). This one
+    is a keystroke log: every word the engine sees, grouped by app, whether or not
+    it was corrected — the Punto Switcher "дневник" (issue #1). It is fenced
+    accordingly, and the fences are the feature:
+    - `Config::diary_enabled` is **off** by default and an upgrade never turns it
+      on; the UI confirms before enabling and carries a plain-language warning.
+    - Nothing reaches it from a blocked context — the engine records only after
+      `blocked()` has cleared the foreground window, so password fields and
+      ignore-listed apps produce no entries. The same gate covers clipboard
+      capture.
+    - `Config::diary_skip_short` (**on** by default) drops closed entries under
+      two words — Punto's guard against logging a lone password. Clipboard entries
+      are exempt. Applied on the app's save path (`state::flush_diary`).
+    - `Config::diary_capture_clipboard` (**off**) also logs copied text, via the
+      engine's idle-tick clipboard watcher (`Engine::on_tick`) — never the hook
+      path. It watches the lock-free sequence counter and resets its baseline
+      after Palimpsest's own selection-conversion writes so it doesn't record
+      them.
+    - Entries are capped at `diary::MAX_ENTRIES`; Settings → Diary shows the lot,
+      searches, exports to a text file, and erases in one click.
+    - **Encryption + password** (`crypt.rs`: Argon2id + XChaCha20-Poly1305).
+      Setting a password *is* what enables at-rest encryption — there is no key
+      without one. A password-protected diary loads **locked**: it neither shows
+      nor records until unlocked this session, because there is no key to decrypt
+      or append with. The key is held in memory only while unlocked. A forgotten
+      password is unrecoverable by design — say so, don't add a backdoor. The lock
+      state lives in `state::DiaryState`; the app never writes a
+      protected-but-locked diary (empty in memory, no key).
+
+    Do not add a "just this once" bypass of any of that, and do not let the diary
+    or clipboard capture become a default.
 - Learning is **silent** — no prompt. A dialog would steal focus from the window
   being typed into, which is exactly the wrong thing for an app that injects
   keystrokes. The toast and the Settings list are how the user finds out.
