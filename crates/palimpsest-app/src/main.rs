@@ -22,6 +22,10 @@ use state::AppState;
 fn main() {
     // Held for the whole process so buffered log lines flush on exit.
     let _log_guard = logging::init();
+    // A single INFO heartbeat at startup: it proves the log pipeline is alive
+    // (so an otherwise-empty log means "nothing happened", not "logging broke")
+    // and stamps every diagnostics file with the build it came from.
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "Palimpsest starting");
 
     tauri::Builder::default()
         // Single-instance must be registered first so a second launch is

@@ -261,6 +261,7 @@ impl Engine {
             return; // the hotkey itself is not part of any word
         }
         if undo_hotkey_matches(key.vk, self.mods, &config) {
+            tracing::info!("undo hotkey fired");
             // Same release-first rule as the other two: the chord is still
             // physically held, so the injected backspaces would otherwise run as
             // Ctrl+Backspace and eat a whole word.
@@ -381,6 +382,9 @@ impl Engine {
     /// Manual hotkey: force-correct the in-progress word, or the last
     /// space-finished one if nothing is being typed.
     fn on_manual(&mut self, config: &Config) {
+        // Entry marker, same purpose as in `on_convert_selection`: distinguishes
+        // "the chord never reached the hook" from "it fired but declined".
+        tracing::info!("manual hotkey fired");
         if let Some(reason) = self.blocked(config) {
             tracing::debug!(%reason, "manual correction suppressed by context");
             return;
@@ -438,11 +442,17 @@ impl Engine {
     /// read-only, so every early exit leaves it exactly as it was. Only a
     /// conversion that actually happened has anything to restore.
     fn on_convert_selection(&mut self, config: &Config) {
-        // The four ways this can end without visibly doing anything all log at
-        // INFO, not DEBUG. "I pressed the hotkey and nothing happened" is the
-        // hardest report to act on, and none of these lines carries typed text —
-        // only a reason, an exe name, or a KLID — so they cost the user no
-        // privacy at the default level. The text itself stays at DEBUG.
+        // The ways this can end without visibly doing anything all log at INFO,
+        // not DEBUG. "I pressed the hotkey and nothing happened" is the hardest
+        // report to act on, and none of these lines carries typed text — only a
+        // reason, an exe name, or a KLID — so they cost the user no privacy at the
+        // default level. The text itself stays at DEBUG.
+        //
+        // This entry marker is the first rung: if it is absent from the log, the
+        // chord never reached the hook (e.g. an F-key that is a media key without
+        // Fn, or another app swallowing it) — a different problem from any no-op
+        // below, and otherwise indistinguishable from it.
+        tracing::info!("selection hotkey fired");
         if let Some(reason) = self.blocked(config) {
             tracing::info!(%reason, "selection conversion suppressed by context");
             return;
