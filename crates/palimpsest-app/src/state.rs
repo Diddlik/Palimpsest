@@ -3,8 +3,9 @@
 //! the tray, and the settings window.
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 
-use palimpsest_core::{Config, Runtime, UiLang, UserWords};
+use palimpsest_core::{Config, Diary, Runtime, UiLang, UserWords};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -19,6 +20,10 @@ pub struct AppState {
     /// settings window) keeps every surface in sync — and so a language change
     /// can relabel it without a restart.
     pub tray: TrayMenu,
+    /// The opt-in typing diary. Empty and untouched unless
+    /// [`Config::diary_enabled`] is on. Behind a `Mutex` because the engine-event
+    /// relay thread appends to it while IPC commands read and clear it.
+    pub diary: Mutex<Diary>,
 }
 
 /// Status pushed to the settings window so its controls reflect the live state.
@@ -120,6 +125,59 @@ pub fn save_user_words(app: &AppHandle, words: &UserWords) {
     if let Err(e) = std::fs::write(&path, json) {
         tracing::warn!(error = %e, "failed to write learned words");
     }
+}
+
+/// Where the typing diary lives — its own file again, so the most sensitive
+/// thing Palimpsest can hold is trivial to find and delete on its own.
+fn diary_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("diary.json"))
+}
+
+/// Load the diary, falling back to an empty one. A missing file is the normal
+/// case: it is only ever written while the feature is switched on.
+pub fn load_diary(app: &AppHandle) -> Diary {
+    diary_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Persist the diary. Best-effort, like the other two writers.
+///
+/// Called on a batch of entries rather than on every word: the diary is capped
+/// at [`palimpsest_core::diary::MAX_ENTRIES`], so re-serializing it per keystroke
+/// would mean rewriting the whole file several times a second while the user
+/// types. The cost of the batch is losing the last few words to a hard crash,
+/// which is the right side of that trade for a convenience log.
+pub fn save_diary(app: &AppHandle, diary: &Diary) {
+    let Some(path) = diary_path(app) else {
+        tracing::warn!("no config directory available; diary not persisted");
+        return;
+    };
+    let json = match serde_json::to_string(diary) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to serialize the diary");
+            return;
+        }
+    };
+    if let Some(dir) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            tracing::warn!(error = %e, "failed to create config directory");
+            return;
+        }
+    }
+    if let Err(e) = std::fs::write(&path, json) {
+        tracing::warn!(error = %e, "failed to write the diary");
+    }
+}
+
+/// Write the in-memory diary out now. Used by the batching relay, by the clear
+/// command, and on the way out of the process.
+pub fn flush_diary(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let Ok(diary) = state.diary.lock() else { return };
+    save_diary(app, &diary);
 }
 
 /// Reflect the on/off state in the tray tooltip, in the user's language.

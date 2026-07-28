@@ -81,11 +81,16 @@ Implemented:
 - Per-language bigram scoring (EN, RU, DE) with a cross-alphabet floor and
   sensitivity-driven guardrails.
 - Automatic correction during typing (backspace → layout switch → Unicode
-  retype, as one atomic injection) plus a manual hotkey and one-step undo.
+  retype, as one atomic injection).
+- Three hotkeys, all defaulting to a Ctrl+Shift chord: convert the word being
+  typed or the one just behind the caret (F9), convert the current selection
+  (F8), and undo the last correction without leaving what you are typing (F10).
 - Active-window context: ignore-list (terminals/IDEs/games) and best-effort
   native password-field detection.
-- Tauri 2 tray + settings UI: enable/pause, sensitivity, layout pairs,
-  ignore-list, autostart, manual hotkey, live correction history, and undo.
+- Tauri 2 tray + settings UI, arranged as tabs — General, Layouts, Hotkeys,
+  History, About — covering enable/pause, sensitivity, layout pairs,
+  ignore-list, autostart, hotkeys, live correction history, and undo.
+- An optional typing diary, off by default (see Privacy below).
 - A fully localized interface — English, Russian, Ukrainian, and German — which
   follows the Windows UI language by default and can be pinned in Settings.
 - Serializable configuration persisted to `%APPDATA%`, applied live (no restart).
@@ -102,16 +107,30 @@ Remaining before a public release (human-gated):
 
 ## Privacy and safety model
 
-Palimpsest is intended to be local-only:
+Palimpsest is local-only:
 
-- No typed text should be sent to a network service.
-- Raw keystrokes should not be written to disk in normal operation.
-- The word buffer should be short-lived and in memory only.
-- Diagnostics should avoid logging typed content by default.
+- No typed text is sent to a network service — ever, under any setting.
+- The word buffer is short-lived and in memory only.
+- Diagnostics never log typed content at the default level.
 - The only network request is the update check: a plain fetch of the release
   feed, with no identifiers and no telemetry. Update packages are verified
   against a signing key built into the app, so a compromised download host
   cannot ship code.
+
+Two features write typed text to disk. Nothing else does, both live under
+`%APPDATA%\com.palimpsest.desktop\` in their own file, and both can be listed and
+erased from Settings → History:
+
+- **Learned words** (`user_words.json`) — **on** by default. Undoing a correction
+  tells Palimpsest that word was right as typed, and the only way to stop
+  correcting it tomorrow is to write it down. One word per undo, nothing else.
+- **Typing diary** (`diary.json`) — **off** by default, and an upgrade never
+  turns it on. This one is a keystroke log: switch it on and every word you type
+  is recorded, grouped by app, not just the corrections. It is there because it
+  is genuinely useful for recovering text a crashed app ate — the same reason
+  Punto Switcher has one — but it is worth being blunt about the trade: anyone
+  who can read your user profile can read it. Nothing is recorded in password
+  fields or ignored apps, it is capped at 500 entries, and one click erases it.
 
 Because Palimpsest uses a global keyboard hook and synthesizes input, antivirus
 and SmartScreen warnings are a real distribution concern. A credible release
@@ -128,10 +147,11 @@ The desktop app is a Tauri 2 tray utility:
 
 - Tray icon with on/paused state; left-click toggles, right-click opens the menu
   (Enabled, Settings, Open logs folder, Quit).
-- Settings window for layout pairs, sensitivity, ignore-list entries, the manual
-  hotkey, the interface language, and autostart — changes apply live, with no
-  restart.
-- Correction history and an undo-last-correction action.
+- Settings window organized as five tabs — **General** (sensitivity, language,
+  autostart, logs, updates), **Layouts** (layout pairs, ignore-list),
+  **Hotkeys**, **History** (corrections, learned words, typing diary), and
+  **About** — with changes applying live, no restart.
+- Correction history and an undo-last-correction action, on a hotkey too.
 - Live status and correction events streamed from the engine.
 
 It is a single instance (only one hook is ever installed) and lives in the tray;
@@ -176,13 +196,16 @@ cargo tauri build
 # → target/release/bundle/nsis/Palimpsest_<version>_x64-setup.exe
 ```
 
-Releases are built by GitHub Actions from a tag. Bump the version in `Cargo.toml`
-and `crates/palimpsest-app/tauri.conf.json` (the workflow refuses a tag that
-disagrees with either), then:
+Releases are built by GitHub Actions from a tag, and the workflow refuses a tag
+that disagrees with either manifest. `scripts/bump.ps1` moves `Cargo.toml`,
+`crates/palimpsest-app/tauri.conf.json`, and `Cargo.lock` together, then commits,
+tags, and pushes:
 
 ```powershell
-git tag v0.3.0
-git push origin main v0.3.0
+./scripts/bump.ps1                 # patch: 0.3.0 -> 0.3.1, tag, push
+./scripts/bump.ps1 -Part minor     # 0.3.0 -> 0.4.0
+./scripts/bump.ps1 -Version 1.0.0  # explicit
+./scripts/bump.ps1 -DryRun         # print the plan, change nothing
 ```
 
 That publishes the installer and the signed `latest.json` feed the in-app updater

@@ -19,7 +19,7 @@ use arc_swap::ArcSwap;
 use crossbeam_channel::{select, Receiver, Sender};
 
 use crate::analyze::{analyze, suggest, suggest_text, Decision, Reinterpreter};
-use crate::buffer::{Completed, Key, WordBuffer};
+use crate::buffer::{Completed, WordBuffer};
 use crate::config::{is_ignored, Config};
 use crate::context::{focused_is_password, Context};
 use crate::events::{Command, CorrectionEvent, EngineEvent};
@@ -83,6 +83,23 @@ fn selection_hotkey_matches(vk: u32, mods: u8, config: &Config) -> bool {
         && mods == config.selection_hotkey_mods
 }
 
+/// The chord-match rule for the "undo the last correction" hotkey — the same
+/// exact-match semantics as [`hotkey_matches`], against [`Config::undo_hotkey`].
+/// A value of `0` disables it.
+fn undo_hotkey_matches(vk: u32, mods: u8, config: &Config) -> bool {
+    config.undo_hotkey != 0 && vk == config.undo_hotkey && mods == config.undo_hotkey_mods
+}
+
+/// Wall-clock seconds since the Unix epoch, for diary timestamps. A clock set
+/// before 1970 (or otherwise unreadable) yields `0` rather than panicking — a
+/// wrong timestamp on a diary entry is not worth taking the app down for.
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Wait for the synthetic `Ctrl+C` to land, returning the copied text.
 ///
 /// `before` is the clipboard sequence number taken just before the copy was
@@ -128,9 +145,18 @@ fn restore_clipboard(saved: Option<String>) {
 }
 
 /// The last word finished with a space, kept so the manual hotkey can still fix
-/// it after the fact when auto-correction declined.
+/// it after the fact.
+///
+/// It holds the word **as it currently appears on screen**, not the physical
+/// keys that produced it. That is what makes the hotkey dependable: the keys
+/// stop describing the text the moment anything rewrites it, so a word that had
+/// just been auto-corrected — or converted by an earlier press of this same
+/// hotkey — used to be unreachable. Rendered text is always accurate, whatever
+/// put it there, so the hotkey can convert it and convert it straight back.
 struct LastWord {
-    keys: Vec<Key>,
+    /// The word as displayed, without its trailing space.
+    text: String,
+    /// KLID the word is currently rendered in — what undo restores.
     layout: String,
 }
 
@@ -229,6 +255,14 @@ impl Engine {
             self.on_convert_selection(&config);
             return; // the hotkey itself is not part of any word
         }
+        if undo_hotkey_matches(key.vk, self.mods, &config) {
+            // Same release-first rule as the other two: the chord is still
+            // physically held, so the injected backspaces would otherwise run as
+            // Ctrl+Backspace and eat a whole word.
+            inject::release_modifiers(self.mods);
+            self.on_undo();
+            return; // the hotkey itself is not part of any word
+        }
         if let Some(done) = self.buffer.push(key) {
             self.on_word(done, &config);
         }
@@ -240,19 +274,26 @@ impl Engine {
         hotkey_matches(vk, self.mods, config)
     }
 
-    /// A completed word: auto-correct it if it ended with a space and the
-    /// heuristic is confident; otherwise remember it for the manual hotkey.
+    /// A completed word: record it in the diary if that is switched on, then
+    /// auto-correct it if it ended with a space and the heuristic is confident.
+    /// Either way the word is remembered for the manual hotkey.
     fn on_word(&mut self, done: Completed, config: &Config) {
-        if done.boundary != VK_SPACE {
-            self.last = None; // can't safely act on tab/enter-finished words
-            return;
-        }
+        // The context gate runs first, before the word is rendered at all, so a
+        // password field or an ignore-listed app produces neither a correction
+        // nor a diary entry.
         if let Some(reason) = self.blocked(config) {
             tracing::debug!(%reason, "correction suppressed by context");
             self.last = None;
             return;
         }
         let current = current_layout_klid();
+        let typed = self.reinterp.reinterpret(&done.keys, &current);
+        self.record(config, &typed);
+
+        if done.boundary != VK_SPACE {
+            self.last = None; // can't safely act on tab/enter-finished words
+            return;
+        }
         let decision = analyze(
             &done.keys,
             &current,
@@ -261,15 +302,32 @@ impl Engine {
             &self.models,
             config.sensitivity,
         );
-        match decision {
-            Decision::Keep => {
-                self.last = Some(LastWord { keys: done.keys, layout: current });
-            }
-            Decision::Correct { .. } => {
-                self.run(&done.keys, &current, &decision, Some(' '), false);
-                self.last = None;
-            }
+        self.last = match decision {
+            Decision::Keep => Some(LastWord { text: typed, layout: current }),
+            // A corrected word stays reachable, now described by the correction:
+            // pressing the manual hotkey converts it straight back.
+            Decision::Correct { .. } => self
+                .run(typed, &current, &decision, Some(' '), false)
+                .map(|(text, layout)| LastWord { text, layout }),
+        };
+    }
+
+    /// Append one typed word to the diary, when the user has switched it on.
+    ///
+    /// Privacy: this is the one place typed text leaves the engine for anything
+    /// other than a correction, and it is gated on an explicit opt-in. The word
+    /// goes over the event channel to be written to `diary.json` — never to
+    /// `tracing`, not even at DEBUG. See [`crate::diary`].
+    fn record(&mut self, config: &Config, word: &str) {
+        if !config.diary_enabled || word.is_empty() {
+            return;
         }
+        let app = self.context.foreground_exe().unwrap_or_default();
+        let _ = self.events.send(EngineEvent::Typed {
+            at: now_secs(),
+            app,
+            word: word.to_string(),
+        });
     }
 
     /// Manual hotkey: force-correct the in-progress word, or the last
@@ -287,19 +345,41 @@ impl Engine {
             let keys = self.buffer.take_current();
             let decision =
                 suggest(&keys, &current, &config.layout_pairs, &self.reinterp, &self.models);
+            let original = self.reinterp.reinterpret(&keys, &current);
             // In-progress word: no boundary to re-emit.
-            self.run(&keys, &current, &decision, None, true);
+            self.run(original, &current, &decision, None, true);
             self.last = None;
         } else if let Some(last) = self.last.take() {
-            let decision = suggest(
-                &last.keys,
-                &last.layout,
-                &config.layout_pairs,
-                &self.reinterp,
-                &self.models,
-            );
-            self.run(&last.keys, &last.layout, &decision, Some(' '), true);
+            self.last = self.convert_last(last, config);
         }
+    }
+
+    /// Convert the last finished word to the other layout, returning what now
+    /// stands in its place so a second press converts it back.
+    ///
+    /// This works from the rendered text rather than the buffered keys, which is
+    /// what makes it dependable — see [`LastWord`] — and it therefore uses
+    /// [`suggest_text`], the same **never-refuses** path as the selection hotkey.
+    /// The reasoning is the same too: this is an explicit instruction, so the
+    /// guardrails that stop `analyze` acting unbidden do not apply. A conversion
+    /// the user did not want costs one press to reverse (the transliteration is
+    /// its own inverse) or one undo; a hotkey that silently declines is
+    /// indistinguishable from a broken one, which is the complaint this replaces.
+    fn convert_last(&mut self, last: LastWord, config: &Config) -> Option<LastWord> {
+        let outcome = suggest_text(&last.text, &config.layout_pairs, &self.reinterp, &self.models);
+        let Some(correction) = outcome else {
+            // Logged at INFO with no typed text, like the selection no-ops: "I
+            // pressed it and nothing happened" is otherwise undiagnosable.
+            tracing::info!("manual hotkey: no configured pair renders the last word differently");
+            return Some(last); // nothing happened, so keep it reachable
+        };
+        let decision = Decision::Correct {
+            backspaces: last.text.chars().count(),
+            text: correction.text,
+            target_layout: correction.target_layout,
+        };
+        self.run(last.text, &last.layout, &decision, Some(' '), true)
+            .map(|(text, layout)| LastWord { text, layout })
     }
 
     /// Convert the user's current *selection* to the other layout: copy it,
@@ -366,6 +446,9 @@ impl Engine {
         }
         restore_clipboard(saved);
 
+        // The caret now sits inside converted text, so whatever word `last` named
+        // is no longer the thing behind it.
+        self.last = None;
         // Make it undoable through the same path as an inline correction: undo
         // erases the `corrected_len` characters we typed and retypes `original`.
         self.last_correction = Some(LastCorrection {
@@ -384,26 +467,29 @@ impl Engine {
 
     /// Execute a decision (no-op for `Keep`). On a correction it performs the
     /// edit, remembers it for undo, and emits a [`EngineEvent::Corrected`] for
-    /// the UI. `keys`/`from_layout` describe the input so we can reconstruct the
-    /// original text (for undo and the event); `manual` flags the hotkey path.
+    /// the UI. `original`/`from_layout` describe the text being replaced (for
+    /// undo and the event); `manual` flags a hotkey path.
+    ///
+    /// Returns the text now on screen and the layout it is in, so the caller can
+    /// keep [`Engine::last`] pointing at what the user can actually see —
+    /// `None` when nothing was applied.
     fn run(
         &mut self,
-        keys: &[Key],
+        original: String,
         from_layout: &str,
         decision: &Decision,
         boundary: Option<char>,
         manual: bool,
-    ) {
+    ) -> Option<(String, String)> {
         let Decision::Correct { backspaces: _, text, target_layout } = decision else {
-            return;
+            return None;
         };
-        let original = self.reinterp.reinterpret(keys, from_layout);
         // Privacy: the typed text is only ever logged at DEBUG, never at the
         // default level — Palimpsest must not record what the user types.
         tracing::debug!(%target_layout, manual, original = %original, corrected = %text, "correcting");
         if let Err(e) = execute::apply(decision, boundary) {
             tracing::warn!(error = %e, "correction failed");
-            return;
+            return None;
         }
         self.last_correction = Some(LastCorrection {
             original: original.clone(),
@@ -417,6 +503,7 @@ impl Engine {
             target_layout: target_layout.clone(),
             manual,
         }));
+        Some((text.clone(), target_layout.clone()))
     }
 
     /// Revert the most recent correction, if one is still undoable. Erases the
@@ -424,9 +511,13 @@ impl Engine {
     /// emits [`EngineEvent::Undone`].
     fn on_undo(&mut self) {
         let Some(lc) = self.last_correction.take() else {
-            tracing::debug!("undo requested but nothing to undo");
+            tracing::info!("undo requested but nothing to undo");
             return;
         };
+        // Whatever `last` described is about to be rewritten, and the user has
+        // just said they want the text as they typed it — so stop offering to
+        // convert it rather than pointing at stale contents.
+        self.last = None;
         tracing::debug!(original = %lc.original, "undoing last correction");
         if let Err(e) = execute::undo(&lc.original, lc.corrected_len, &lc.from_layout, lc.boundary) {
             tracing::warn!(error = %e, "undo failed");
@@ -552,5 +643,25 @@ mod tests {
 
         let off = Config { selection_hotkey: 0, ..Config::default() };
         assert!(!selection_hotkey_matches(0, 0, &off));
+    }
+
+    #[test]
+    fn undo_hotkey_matches_exact_chord_and_respects_disable() {
+        let cfg = Config::default(); // Ctrl+Shift+F10
+        assert!(undo_hotkey_matches(0x79, MOD_CONTROL | MOD_SHIFT, &cfg));
+        assert!(!undo_hotkey_matches(0x79, MOD_SHIFT, &cfg)); // missing Ctrl
+        assert!(!undo_hotkey_matches(0x78, MOD_CONTROL | MOD_SHIFT, &cfg)); // that's manual
+
+        let off = Config { undo_hotkey: 0, ..Config::default() };
+        assert!(!undo_hotkey_matches(0, 0, &off));
+    }
+
+    #[test]
+    fn the_three_hotkeys_do_not_collide_by_default() {
+        // They sit on adjacent function keys behind the same chord, so a typo in
+        // one default would silently shadow another.
+        let c = Config::default();
+        let all = [c.manual_hotkey, c.selection_hotkey, c.undo_hotkey];
+        assert_eq!(all.iter().collect::<std::collections::HashSet<_>>().len(), 3);
     }
 }

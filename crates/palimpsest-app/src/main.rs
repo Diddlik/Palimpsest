@@ -49,10 +49,15 @@ fn main() {
             commands::clear_hotkey,
             commands::set_selection_hotkey,
             commands::clear_selection_hotkey,
+            commands::set_undo_hotkey,
+            commands::clear_undo_hotkey,
             commands::hotkey_conflicts,
             commands::list_user_words,
             commands::forget_word,
             commands::clear_user_words,
+            commands::list_diary,
+            commands::clear_diary,
+            commands::app_version,
             commands::check_update,
             commands::install_update,
         ])
@@ -104,25 +109,55 @@ fn main() {
             let events = runtime.events();
             let event_handle = handle.clone();
             std::thread::spawn(move || {
+                // Diary entries are written in batches rather than per word; see
+                // `state::save_diary` for why.
+                const DIARY_FLUSH_EVERY: usize = 20;
+                let mut unflushed = 0usize;
+
                 while let Ok(event) = events.recv() {
-                    // A word learned from an undo has only been stored in memory;
-                    // persist the dictionary before the UI hears about it.
-                    if matches!(event, palimpsest_core::EngineEvent::Learned { .. }) {
-                        if let Some(app_state) =
-                            event_handle.try_state::<AppState>().as_deref()
-                        {
-                            state::save_user_words(
-                                &event_handle,
-                                &app_state.runtime.user_words(),
-                            );
+                    match &event {
+                        // A word learned from an undo has only been stored in
+                        // memory; persist the dictionary before the UI hears
+                        // about it.
+                        palimpsest_core::EngineEvent::Learned { .. } => {
+                            if let Some(app_state) = event_handle.try_state::<AppState>().as_deref()
+                            {
+                                state::save_user_words(
+                                    &event_handle,
+                                    &app_state.runtime.user_words(),
+                                );
+                            }
                         }
+                        // The engine only emits this while the diary is switched
+                        // on, so nothing is recorded by default.
+                        palimpsest_core::EngineEvent::Typed { at, app, word } => {
+                            if let Some(app_state) = event_handle.try_state::<AppState>().as_deref()
+                            {
+                                if let Ok(mut diary) = app_state.diary.lock() {
+                                    diary.push(*at, app, word);
+                                }
+                            }
+                            unflushed += 1;
+                            if unflushed >= DIARY_FLUSH_EVERY {
+                                unflushed = 0;
+                                state::flush_diary(&event_handle);
+                            }
+                            // Typed text is not pushed to the webview per word —
+                            // the History pane reads the diary on demand.
+                            continue;
+                        }
+                        _ => {}
                     }
                     let _ = event_handle.emit("engine-event", event);
                 }
             });
 
             let tray = tray::build(&handle, enabled, lang)?;
-            app.manage(AppState { runtime, tray });
+            app.manage(AppState {
+                runtime,
+                tray,
+                diary: std::sync::Mutex::new(state::load_diary(&handle)),
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -137,13 +172,17 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("failed to build Palimpsest")
-        .run(|_app, event| {
+        .run(|app, event| {
             // A window-driven exit (no code) is suppressed so the app survives in
             // the tray; an explicit Quit (`app.exit(0)`) carries a code and is
             // allowed through.
             if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
                 if code.is_none() {
                     api.prevent_exit();
+                } else {
+                    // Last chance to write out the words the batching relay is
+                    // still holding.
+                    state::flush_diary(app);
                 }
             }
         });

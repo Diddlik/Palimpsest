@@ -3,7 +3,7 @@
 //! a control message, then return. No blocking work on the UI thread.
 
 use palimpsest_core::hotkey::{self, Unusable};
-use palimpsest_core::{layouts, processes, Config, Lang, LayoutInfo, UiLang, UserWords};
+use palimpsest_core::{layouts, processes, Config, Diary, Lang, LayoutInfo, UiLang, UserWords};
 use tauri::{AppHandle, State};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -144,6 +144,29 @@ pub fn clear_selection_hotkey(app: AppHandle, state: State<AppState>) {
     state::apply_config(&app, &state, config);
 }
 
+/// Set the "undo the last correction" hotkey from a captured key + modifier
+/// bitmask. Validated exactly like [`set_hotkey`]; returns a user-facing error on
+/// rejection.
+#[tauri::command]
+pub fn set_undo_hotkey(app: AppHandle, state: State<AppState>, vk: u32, mods: u8) -> Result<(), String> {
+    let lang = state.runtime.config().ui_language;
+    hotkey::validate(vk, mods).map_err(|reason| hotkey_error(reason, mods, lang))?;
+    let mut config = (*state.runtime.config()).clone();
+    config.undo_hotkey = vk;
+    config.undo_hotkey_mods = mods;
+    state::apply_config(&app, &state, config);
+    Ok(())
+}
+
+/// Clear the undo hotkey so only the settings window can revert a correction.
+#[tauri::command]
+pub fn clear_undo_hotkey(app: AppHandle, state: State<AppState>) {
+    let mut config = (*state.runtime.config()).clone();
+    config.undo_hotkey = 0;
+    config.undo_hotkey_mods = 0;
+    state::apply_config(&app, &state, config);
+}
+
 /// A configured hotkey that cannot be claimed right now.
 #[derive(serde::Serialize)]
 pub struct HotkeyConflict {
@@ -167,6 +190,7 @@ pub fn hotkey_conflicts(state: State<AppState>) -> Vec<HotkeyConflict> {
     [
         ("manual", config.manual_hotkey, config.manual_hotkey_mods),
         ("selection", config.selection_hotkey, config.selection_hotkey_mods),
+        ("undo", config.undo_hotkey, config.undo_hotkey_mods),
     ]
     .into_iter()
     .filter(|(_, vk, _)| *vk != 0) // 0 means the binding is switched off
@@ -204,6 +228,30 @@ pub fn forget_word(app: AppHandle, state: State<AppState>, lang: String, word: S
 pub fn clear_user_words(app: AppHandle, state: State<AppState>) {
     state.runtime.clear_user_words();
     state::save_user_words(&app, &state.runtime.user_words());
+}
+
+/// The typing diary, newest stretch last. Empty unless the user switched the
+/// feature on; like the learned-word list, it must always be inspectable in full.
+#[tauri::command]
+pub fn list_diary(state: State<AppState>) -> Diary {
+    state.diary.lock().map(|d| d.clone()).unwrap_or_default()
+}
+
+/// Erase the diary, in memory and on disk — the escape hatch that makes the
+/// whole feature reversible.
+#[tauri::command]
+pub fn clear_diary(app: AppHandle, state: State<AppState>) {
+    if let Ok(mut diary) = state.diary.lock() {
+        diary.clear();
+        state::save_diary(&app, &diary);
+    }
+}
+
+/// This build's version, for the About pane. Read from the bundle metadata so it
+/// can never drift from what the installer and the updater report.
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 /// Outcome of an update check, together with the version already running.

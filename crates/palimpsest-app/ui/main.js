@@ -32,6 +32,7 @@ const VK_NAMES = {
 
 const $ = (id) => document.getElementById(id);
 const el = {
+  tabs: $("tabs"),
   enabled: $("enabled"),
   enabledLabel: $("enabled-label"),
   sensitivity: $("sensitivity"),
@@ -49,6 +50,9 @@ const el = {
   selectionHotkeyDisplay: $("selection-hotkey-display"),
   setSelectionHotkey: $("set-selection-hotkey"),
   clearSelectionHotkey: $("clear-selection-hotkey"),
+  undoHotkeyDisplay: $("undo-hotkey-display"),
+  setUndoHotkey: $("set-undo-hotkey"),
+  clearUndoHotkey: $("clear-undo-hotkey"),
   autostart: $("autostart"),
   undo: $("undo"),
   openLogs: $("open-logs"),
@@ -56,6 +60,10 @@ const el = {
   learnOnUndo: $("learn-on-undo"),
   words: $("words"),
   clearWords: $("clear-words"),
+  diaryEnabled: $("diary-enabled"),
+  diary: $("diary"),
+  clearDiary: $("clear-diary"),
+  aboutVersion: $("about-version"),
   checkUpdate: $("check-update"),
   updateStatus: $("update-status"),
   installUpdate: $("install-update"),
@@ -72,10 +80,15 @@ let currentHotkey = 0x13;
 let currentMods = 0;
 let currentSelectionHotkey = 0x91;
 let currentSelectionMods = 0;
+let currentUndoHotkey = 0;
+let currentUndoMods = 0;
 let capturing = false;
 // Corrections as the engine reported them, kept raw so the list can be rebuilt
 // in a new language instead of stranding old rows in the old one.
 let historyEvents = [];
+// This build's version, from the backend — kept so the About line can be
+// re-rendered when the language changes.
+let appVersion = "";
 
 // Modifier bit values — must match Config::MOD_* in the core (= Win32 MOD_*).
 const MOD = { ALT: 0x1, CTRL: 0x2, SHIFT: 0x4, WIN: 0x8 };
@@ -151,6 +164,29 @@ function retranslate() {
   renderHotkey();
   renderHistory();
   renderWords();
+  renderDiary();
+  renderAbout();
+}
+
+function renderAbout() {
+  el.aboutVersion.textContent = appVersion ? t("aboutVersion", { version: appVersion }) : "—";
+}
+
+// ----- Tabs ------------------------------------------------------------------
+
+// Exactly one tab and one pane carry `.active`; everything else is hidden, so
+// the panes never fight for the scroll position.
+function showPane(name) {
+  for (const tab of el.tabs.querySelectorAll(".tab")) {
+    tab.classList.toggle("active", tab.dataset.pane === name);
+  }
+  for (const pane of document.querySelectorAll(".pane")) {
+    pane.classList.toggle("active", pane.dataset.pane === name);
+  }
+  document.querySelector("main").scrollTop = 0;
+  // The diary is written by the backend in batches, not pushed per word, so it
+  // is re-read whenever its pane comes into view.
+  if (name === "history") loadDiary();
 }
 
 // ----- Layout pair rows ------------------------------------------------------
@@ -278,6 +314,7 @@ function renderHotkey() {
     currentSelectionHotkey,
     currentSelectionMods,
   );
+  el.undoHotkeyDisplay.textContent = hotkeyLabel(currentUndoHotkey, currentUndoMods);
 }
 
 function populate(config) {
@@ -291,8 +328,11 @@ function populate(config) {
   currentMods = config.manual_hotkey_mods || 0;
   currentSelectionHotkey = config.selection_hotkey || 0;
   currentSelectionMods = config.selection_hotkey_mods || 0;
+  currentUndoHotkey = config.undo_hotkey || 0;
+  currentUndoMods = config.undo_hotkey_mods || 0;
   renderHotkey();
   el.learnOnUndo.checked = config.learn_on_undo !== false;
+  el.diaryEnabled.checked = config.diary_enabled === true;
   el.ignore.value = (config.ignore_processes || []).join("\n");
 
   el.pairs.innerHTML = "";
@@ -311,7 +351,10 @@ function gather() {
     manual_hotkey_mods: currentMods,
     selection_hotkey: currentSelectionHotkey,
     selection_hotkey_mods: currentSelectionMods,
+    undo_hotkey: currentUndoHotkey,
+    undo_hotkey_mods: currentUndoMods,
     learn_on_undo: el.learnOnUndo.checked,
+    diary_enabled: el.diaryEnabled.checked,
     ui_language: el.uiLanguage.value,
   };
 }
@@ -522,9 +565,69 @@ function layoutNameForLang(lang) {
   return klid ? layoutName(klid) : lang;
 }
 
+// ----- Typing diary ----------------------------------------------------------
+
+// The opt-in keystroke log. It is the most sensitive thing the app can hold, so
+// it is shown here in full, newest first, and erasable in one click.
+let diaryEntries = [];
+
+async function loadDiary() {
+  try {
+    const diary = await invoke("list_diary");
+    diaryEntries = diary.entries || [];
+  } catch (e) {
+    setStatus(t("loadDiaryFailed", { error: e }));
+    return;
+  }
+  renderDiary();
+}
+
+// Unix seconds → the user's locale format. Falls back to the raw stamp if the
+// runtime dislikes the value, rather than rendering "Invalid Date".
+function stamp(secs) {
+  const d = new Date(secs * 1000);
+  return isNaN(d) ? String(secs) : d.toLocaleString(LOCALE);
+}
+
+function renderDiary() {
+  el.diary.innerHTML = "";
+  if (diaryEntries.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    // Distinguish "switched off" from "on but nothing typed yet" — otherwise an
+    // empty list reads as a broken feature.
+    const key = el.diaryEnabled.checked ? "diaryEmpty" : "diaryOff";
+    li.dataset.i18n = key;
+    li.textContent = t(key);
+    el.diary.append(li);
+    return;
+  }
+
+  for (const entry of [...diaryEntries].reverse()) {
+    const li = document.createElement("li");
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    const when = document.createElement("span");
+    when.textContent = stamp(entry.at);
+    const app = document.createElement("span");
+    app.textContent = entry.app || t("unknownApp");
+    meta.append(when, app);
+    const text = document.createElement("span");
+    text.className = "text";
+    text.textContent = entry.text;
+    li.append(meta, text);
+    el.diary.append(li);
+  }
+}
+
 // ----- Wiring ----------------------------------------------------------------
 
 function wire() {
+  el.tabs.addEventListener("click", (ev) => {
+    const tab = ev.target.closest(".tab");
+    if (tab) showPane(tab.dataset.pane);
+  });
+
   el.enabled.addEventListener("change", async () => {
     if (!ready) return;
     el.enabledLabel.textContent = el.enabled.checked ? t("on") : t("paused");
@@ -601,6 +704,29 @@ function wire() {
     }
   });
 
+  el.setUndoHotkey.addEventListener("click", () =>
+    startCapture({
+      button: el.setUndoHotkey,
+      display: el.undoHotkeyDisplay,
+      command: "set_undo_hotkey",
+      onSet: (vk, mods) => {
+        currentUndoHotkey = vk;
+        currentUndoMods = mods;
+      },
+    }),
+  );
+  el.clearUndoHotkey.addEventListener("click", async () => {
+    try {
+      await invoke("clear_undo_hotkey");
+      currentUndoHotkey = 0;
+      currentUndoMods = 0;
+      renderHotkey();
+      setStatus(t("undoHotkeyCleared"));
+    } catch (e) {
+      setStatus(t("error", { error: e }));
+    }
+  });
+
   el.autostart.addEventListener("change", async () => {
     if (!ready) return;
     try {
@@ -635,6 +761,27 @@ function wire() {
       await invoke("clear_user_words");
       await loadWords();
       setStatus(t("forgotAll"));
+    } catch (e) {
+      setStatus(t("error", { error: e }));
+    }
+  });
+
+  // Turning the diary on is a privacy decision, so it is confirmed rather than
+  // taken on a stray click; turning it off never is.
+  el.diaryEnabled.addEventListener("change", async () => {
+    if (el.diaryEnabled.checked && !confirm(t("diaryConfirm"))) {
+      el.diaryEnabled.checked = false;
+      return;
+    }
+    await apply();
+    renderDiary(); // the empty-state line differs between on and off
+  });
+
+  el.clearDiary.addEventListener("click", async () => {
+    try {
+      await invoke("clear_diary");
+      await loadDiary();
+      setStatus(t("diaryCleared"));
     } catch (e) {
       setStatus(t("error", { error: e }));
     }
@@ -703,6 +850,13 @@ async function init() {
   } catch (e) {
     setStatus(t("loadFailed", { error: e }));
   }
+  await loadDiary(); // after `populate`, so the empty line knows on from off
+  try {
+    appVersion = await invoke("app_version");
+    renderAbout();
+  } catch (e) {
+    setStatus(t("error", { error: e }));
+  }
   await warnAboutHotkeyConflicts();
   checkForUpdate(true);
 }
@@ -737,7 +891,11 @@ async function warnAboutHotkeyConflicts() {
   try {
     const conflicts = await invoke("hotkey_conflicts");
     if (conflicts.length === 0) return;
-    const label = { manual: t("conflictManual"), selection: t("conflictSelection") };
+    const label = {
+      manual: t("conflictManual"),
+      selection: t("conflictSelection"),
+      undo: t("conflictUndo"),
+    };
     showError(
       conflicts.map((c) => `${label[c.which] || c.which}: ${c.message}`).join(" "),
     );

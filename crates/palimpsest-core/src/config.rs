@@ -142,6 +142,33 @@ pub struct Config {
     /// when absent from an on-disk config.
     #[serde(default)]
     pub selection_hotkey_mods: u8,
+    /// Virtual-key code of the "undo the last correction" hotkey — the same
+    /// action as the settings window's *Undo last*, reachable without leaving
+    /// the app being typed in. Defaults to `VK_F10` (`0x79`) with
+    /// [`undo_hotkey_mods`] = Ctrl+Shift, next to the other two on F8/F9. `0`
+    /// disables it.
+    ///
+    /// Unlike the other two this field-defaults to the shipped chord rather than
+    /// to `0`, so an upgrade picks the binding up without the user having to go
+    /// find it. That is only safe because the default is a Ctrl+Shift chord — the
+    /// reason the older fields default to `0` is that a partial file could
+    /// otherwise resurrect a *bare* typing key. A config that says `0`
+    /// explicitly was cleared on purpose and stays cleared.
+    #[serde(default = "default_undo_hotkey")]
+    pub undo_hotkey: u32,
+    /// Modifier keys held together with [`undo_hotkey`] — a `MOD_*` bitmask (see
+    /// [`manual_hotkey_mods`]). `0` means the bare key. Ignored when
+    /// [`undo_hotkey`] is `0`.
+    #[serde(default = "default_undo_mods")]
+    pub undo_hotkey_mods: u8,
+    /// Whether to keep a **typing diary**: every word the engine sees, grouped by
+    /// app, written to `diary.json`. This is a keystroke log — the Punto Switcher
+    /// feature of the same name — and it is the single most privacy-invasive
+    /// thing Palimpsest can do, so it is **off by default** and stays off unless
+    /// the user turns it on. See [`crate::diary`] and the Privacy section of
+    /// `AGENT_INSTRUCTIONS.md`.
+    #[serde(default)]
+    pub diary_enabled: bool,
     /// Whether undoing a correction teaches Palimpsest that the word was right
     /// as typed, so it stops correcting it. This is the one path that writes
     /// typed text to disk (see [`crate::user_dict`]), so it is switchable —
@@ -162,6 +189,17 @@ fn default_true() -> bool {
     true
 }
 
+/// serde default for [`Config::undo_hotkey`] — see the field's note on why this
+/// one restores the shipped binding instead of `0`.
+fn default_undo_hotkey() -> u32 {
+    0x79 // VK_F10
+}
+
+/// serde default for [`Config::undo_hotkey_mods`] (see [`default_undo_hotkey`]).
+fn default_undo_mods() -> u8 {
+    MOD_CONTROL | MOD_SHIFT
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -177,6 +215,9 @@ impl Default for Config {
             manual_hotkey_mods: MOD_CONTROL | MOD_SHIFT,
             selection_hotkey: 0x77, // VK_F8 — with Ctrl+Shift below: Ctrl+Shift+F8
             selection_hotkey_mods: MOD_CONTROL | MOD_SHIFT,
+            undo_hotkey: 0x79, // VK_F10 — with Ctrl+Shift below: Ctrl+Shift+F10
+            undo_hotkey_mods: MOD_CONTROL | MOD_SHIFT,
+            diary_enabled: false, // a keystroke log is never on unless asked for
             learn_on_undo: true,
             ui_language: UiLang::System,
         }
@@ -266,6 +307,28 @@ mod tests {
         assert_eq!(c.manual_hotkey_mods, MOD_CONTROL | MOD_SHIFT);
         assert_eq!(c.selection_hotkey, 0x77); // F8
         assert_eq!(c.selection_hotkey_mods, MOD_CONTROL | MOD_SHIFT);
+        assert_eq!(c.undo_hotkey, 0x79); // F10
+        assert_eq!(c.undo_hotkey_mods, MOD_CONTROL | MOD_SHIFT);
+    }
+
+    #[test]
+    fn the_diary_is_off_until_asked_for() {
+        // A keystroke log must never appear by upgrading: absent from an on-disk
+        // config means off, exactly like a fresh install.
+        assert!(!Config::default().diary_enabled);
+        let older: Config = serde_json::from_str(r#"{ "enabled": true }"#).unwrap();
+        assert!(!older.diary_enabled);
+    }
+
+    #[test]
+    fn a_cleared_undo_hotkey_is_not_resurrected() {
+        // Absent → the shipped chord, so upgrading finds the new binding...
+        let older: Config = serde_json::from_str(r#"{ "enabled": true }"#).unwrap();
+        assert_eq!(older.undo_hotkey, 0x79);
+        // ...but an explicit 0 was a deliberate "off" and survives a reload.
+        let cleared: Config =
+            serde_json::from_str(r#"{ "undo_hotkey": 0, "undo_hotkey_mods": 0 }"#).unwrap();
+        assert_eq!(cleared.undo_hotkey, 0);
     }
 
     #[test]

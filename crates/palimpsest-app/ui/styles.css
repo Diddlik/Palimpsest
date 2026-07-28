@@ -51,14 +51,39 @@ body {
 h1 { font-size: 17px; margin: 0; }
 .tagline { margin: 0; color: var(--muted); font-size: 12px; }
 
+/* Tabs. The row scrolls sideways rather than wrapping, so a long translated
+   label never pushes the panes down or widens the window. */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  border: 0; background: transparent; color: var(--muted);
+  border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 9px 12px; white-space: nowrap;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent-bright); border-bottom-color: var(--accent-bright); }
+
 main {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
 }
+
+/* Only the selected pane is laid out; the rest are removed from flow entirely so
+   their controls can't be tabbed into. */
+.pane { display: none; flex-direction: column; gap: 14px; }
+.pane.active { display: flex; }
 
 .card {
   background: var(--card);
@@ -176,6 +201,28 @@ button.icon:hover { background: rgba(200,85,61,.12); }
 .history .tag { margin-left: auto; font-size: 11px; color: var(--muted); flex: 0 0 auto; }
 /* The per-word Forget button must keep its label, so it never shrinks. */
 .history button { flex: 0 0 auto; padding: 3px 9px; font-size: 12px; }
+
+/* The diary is the one feature that can surprise someone reading over the
+   user's shoulder later, so its warning is styled to be read, not skimmed. */
+.warn {
+  color: var(--text); font-size: 12px; line-height: 1.5;
+  background: rgba(200, 85, 61, .1);
+  border: 1px solid var(--danger); border-left-width: 3px;
+  border-radius: 7px; padding: 9px 11px; margin: 10px 0 0;
+}
+/* Diary rows stack (timestamp + app above the text) rather than truncating to
+   one line — a stretch of typing is a sentence, not a word. */
+.history.diary li { flex-direction: column; align-items: stretch; gap: 3px; }
+.diary .meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; }
+.diary .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* About */
+.credits { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.credits li { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.credits strong { color: var(--text); font-weight: 600; }
+/* Not a link: the webview has nowhere to navigate to and no opener plugin, so
+   the URL is presented as text the user can select and copy. */
+.about-link { margin: 4px 0 0; font-size: 12px; user-select: text; color: var(--accent-bright); }
 
 /* Toast + status */
 .toast {
