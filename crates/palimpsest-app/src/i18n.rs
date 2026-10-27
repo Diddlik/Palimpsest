@@ -33,6 +33,19 @@ pub struct Strings {
     pub hotkey_busy_win: &'static str,
     /// Hotkey rejected: already claimed by another application.
     pub hotkey_busy: &'static str,
+    /// Diary unlock: the password did not decrypt it.
+    pub diary_wrong_password: &'static str,
+    /// Diary password: an empty password was submitted.
+    pub diary_password_empty: &'static str,
+    /// Diary: an action needs the diary unlocked first.
+    pub diary_locked: &'static str,
+    /// Diary: its lock was momentarily unavailable (a poisoned mutex).
+    pub diary_busy: &'static str,
+    /// Elevated-autostart: the user dismissed the UAC prompt.
+    pub elevated_cancelled: &'static str,
+    /// Window-title marker shown when Palimpsest runs elevated, e.g.
+    /// `Palimpsest (Administrator)`.
+    pub admin: &'static str,
 }
 
 const EN: Strings = Strings {
@@ -46,6 +59,12 @@ const EN: Strings = Strings {
     hotkey_modifier: "A modifier key can't be used on its own.",
     hotkey_busy_win: "Windows keeps most Win+… shortcuts for itself. Try Win+F8 or Win+Insert, or add Shift — Win+Shift+PageUp is free.",
     hotkey_busy: "That combination is already in use by another app.",
+    diary_wrong_password: "Wrong password.",
+    diary_password_empty: "Enter a password.",
+    diary_locked: "Unlock the diary first.",
+    diary_busy: "The diary is busy — try again.",
+    elevated_cancelled: "Cancelled — nothing changed.",
+    admin: "Administrator",
 };
 
 const RU: Strings = Strings {
@@ -59,6 +78,12 @@ const RU: Strings = Strings {
     hotkey_modifier: "Клавишу-модификатор нельзя использовать саму по себе.",
     hotkey_busy_win: "Windows оставляет большинство сочетаний Win+… себе. Попробуйте Win+F8 или Win+Insert либо добавьте Shift — Win+Shift+PageUp свободно.",
     hotkey_busy: "Это сочетание уже занято другим приложением.",
+    diary_wrong_password: "Неверный пароль.",
+    diary_password_empty: "Введите пароль.",
+    diary_locked: "Сначала разблокируйте дневник.",
+    diary_busy: "Дневник занят — попробуйте ещё раз.",
+    elevated_cancelled: "Отменено — ничего не изменилось.",
+    admin: "Администратор",
 };
 
 const UK: Strings = Strings {
@@ -72,6 +97,12 @@ const UK: Strings = Strings {
     hotkey_modifier: "Клавішу-модифікатор не можна використовувати саму по собі.",
     hotkey_busy_win: "Windows залишає більшість сполучень Win+… собі. Спробуйте Win+F8 або Win+Insert чи додайте Shift — Win+Shift+PageUp вільне.",
     hotkey_busy: "Це сполучення вже зайняте іншим застосунком.",
+    diary_wrong_password: "Невірний пароль.",
+    diary_password_empty: "Уведіть пароль.",
+    diary_locked: "Спочатку розблокуйте щоденник.",
+    diary_busy: "Щоденник зайнятий — спробуйте ще раз.",
+    elevated_cancelled: "Скасовано — нічого не змінилося.",
+    admin: "Адміністратор",
 };
 
 const DE: Strings = Strings {
@@ -85,6 +116,12 @@ const DE: Strings = Strings {
     hotkey_modifier: "Eine Modifikatortaste allein ist nicht verwendbar.",
     hotkey_busy_win: "Windows behält die meisten Win+…-Kürzel für sich. Win+F8 oder Win+Einfg versuchen, oder Umschalt ergänzen — Win+Umschalt+BildAuf ist frei.",
     hotkey_busy: "Diese Kombination wird bereits von einer anderen App verwendet.",
+    diary_wrong_password: "Falsches Passwort.",
+    diary_password_empty: "Bitte ein Passwort eingeben.",
+    diary_locked: "Zuerst das Tagebuch entsperren.",
+    diary_busy: "Das Tagebuch ist beschäftigt — bitte erneut versuchen.",
+    elevated_cancelled: "Abgebrochen — nichts geändert.",
+    admin: "Administrator",
 };
 
 /// The string table for `lang`, resolving [`UiLang::System`] first.

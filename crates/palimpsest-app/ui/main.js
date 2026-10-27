@@ -32,6 +32,7 @@ const VK_NAMES = {
 
 const $ = (id) => document.getElementById(id);
 const el = {
+  tabs: $("tabs"),
   enabled: $("enabled"),
   enabledLabel: $("enabled-label"),
   sensitivity: $("sensitivity"),
@@ -49,13 +50,38 @@ const el = {
   selectionHotkeyDisplay: $("selection-hotkey-display"),
   setSelectionHotkey: $("set-selection-hotkey"),
   clearSelectionHotkey: $("clear-selection-hotkey"),
+  undoHotkeyDisplay: $("undo-hotkey-display"),
+  setUndoHotkey: $("set-undo-hotkey"),
+  clearUndoHotkey: $("clear-undo-hotkey"),
   autostart: $("autostart"),
+  elevatedAutostart: $("elevated-autostart"),
   undo: $("undo"),
   openLogs: $("open-logs"),
   history: $("history"),
   learnOnUndo: $("learn-on-undo"),
   words: $("words"),
   clearWords: $("clear-words"),
+  diaryEnabled: $("diary-enabled"),
+  diaryClipboard: $("diary-clipboard"),
+  diarySkipShort: $("diary-skip-short"),
+  diaryMaxEntries: $("diary-max-entries"),
+  diaryRetentionDays: $("diary-retention-days"),
+  diaryMaxSizeMb: $("diary-max-size-mb"),
+  diaryProtectionState: $("diary-protection-state"),
+  diarySetPwRow: $("diary-set-pw-row"),
+  diaryPw: $("diary-pw"),
+  diaryPw2: $("diary-pw2"),
+  diarySetPw: $("diary-set-pw"),
+  diaryClearPw: $("diary-clear-pw"),
+  diaryLocked: $("diary-locked"),
+  diaryUnlockPw: $("diary-unlock-pw"),
+  diaryUnlock: $("diary-unlock"),
+  diaryOpen: $("diary-open"),
+  diarySearch: $("diary-search"),
+  diary: $("diary"),
+  diaryExport: $("diary-export"),
+  clearDiary: $("clear-diary"),
+  aboutVersion: $("about-version"),
   checkUpdate: $("check-update"),
   updateStatus: $("update-status"),
   installUpdate: $("install-update"),
@@ -72,10 +98,15 @@ let currentHotkey = 0x13;
 let currentMods = 0;
 let currentSelectionHotkey = 0x91;
 let currentSelectionMods = 0;
+let currentUndoHotkey = 0;
+let currentUndoMods = 0;
 let capturing = false;
 // Corrections as the engine reported them, kept raw so the list can be rebuilt
 // in a new language instead of stranding old rows in the old one.
 let historyEvents = [];
+// This build's version, from the backend — kept so the About line can be
+// re-rendered when the language changes.
+let appVersion = "";
 
 // Modifier bit values — must match Config::MOD_* in the core (= Win32 MOD_*).
 const MOD = { ALT: 0x1, CTRL: 0x2, SHIFT: 0x4, WIN: 0x8 };
@@ -151,6 +182,29 @@ function retranslate() {
   renderHotkey();
   renderHistory();
   renderWords();
+  renderDiary();
+  renderAbout();
+}
+
+function renderAbout() {
+  el.aboutVersion.textContent = appVersion ? t("aboutVersion", { version: appVersion }) : "—";
+}
+
+// ----- Tabs ------------------------------------------------------------------
+
+// Exactly one tab and one pane carry `.active`; everything else is hidden, so
+// the panes never fight for the scroll position.
+function showPane(name) {
+  for (const tab of el.tabs.querySelectorAll(".tab")) {
+    tab.classList.toggle("active", tab.dataset.pane === name);
+  }
+  for (const pane of document.querySelectorAll(".pane")) {
+    pane.classList.toggle("active", pane.dataset.pane === name);
+  }
+  document.querySelector("main").scrollTop = 0;
+  // The diary is written by the backend in batches, not pushed per word, so it
+  // is re-read (and its lock state re-checked) whenever its pane comes into view.
+  if (name === "diary") refreshDiary();
 }
 
 // ----- Layout pair rows ------------------------------------------------------
@@ -278,6 +332,7 @@ function renderHotkey() {
     currentSelectionHotkey,
     currentSelectionMods,
   );
+  el.undoHotkeyDisplay.textContent = hotkeyLabel(currentUndoHotkey, currentUndoMods);
 }
 
 function populate(config) {
@@ -291,8 +346,16 @@ function populate(config) {
   currentMods = config.manual_hotkey_mods || 0;
   currentSelectionHotkey = config.selection_hotkey || 0;
   currentSelectionMods = config.selection_hotkey_mods || 0;
+  currentUndoHotkey = config.undo_hotkey || 0;
+  currentUndoMods = config.undo_hotkey_mods || 0;
   renderHotkey();
   el.learnOnUndo.checked = config.learn_on_undo !== false;
+  el.diaryEnabled.checked = config.diary_enabled === true;
+  el.diaryClipboard.checked = config.diary_capture_clipboard === true;
+  el.diarySkipShort.checked = config.diary_skip_short !== false;
+  el.diaryMaxEntries.value = config.diary_max_entries || 500;
+  el.diaryRetentionDays.value = config.diary_retention_days || 0;
+  el.diaryMaxSizeMb.value = config.diary_max_size_mb || 0;
   el.ignore.value = (config.ignore_processes || []).join("\n");
 
   el.pairs.innerHTML = "";
@@ -311,7 +374,15 @@ function gather() {
     manual_hotkey_mods: currentMods,
     selection_hotkey: currentSelectionHotkey,
     selection_hotkey_mods: currentSelectionMods,
+    undo_hotkey: currentUndoHotkey,
+    undo_hotkey_mods: currentUndoMods,
     learn_on_undo: el.learnOnUndo.checked,
+    diary_enabled: el.diaryEnabled.checked,
+    diary_capture_clipboard: el.diaryClipboard.checked,
+    diary_skip_short: el.diarySkipShort.checked,
+    diary_max_entries: Math.min(10000, Math.max(1, parseInt(el.diaryMaxEntries.value, 10) || 500)),
+    diary_retention_days: Math.min(36500, Math.max(0, parseInt(el.diaryRetentionDays.value, 10) || 0)),
+    diary_max_size_mb: Math.min(1024, Math.max(0, parseInt(el.diaryMaxSizeMb.value, 10) || 0)),
     ui_language: el.uiLanguage.value,
   };
 }
@@ -522,9 +593,166 @@ function layoutNameForLang(lang) {
   return klid ? layoutName(klid) : lang;
 }
 
+// ----- Typing diary ----------------------------------------------------------
+
+// The opt-in keystroke log — the most sensitive thing the app can hold. It gets
+// its own tab, shown in full (newest first, grouped by day, searchable), can be
+// exported and erased, and can be encrypted behind a password that gates both
+// viewing and recording.
+let diaryEntries = [];
+let diaryStatus = { enabled: false, protected: false, unlocked: false, count: 0 };
+
+// Pull the diary's lock state, then its entries if we're allowed to see them,
+// and lay the pane out accordingly. Called whenever the pane opens or its state
+// could have changed (toggled recording, set/cleared password, unlocked).
+async function refreshDiary() {
+  try {
+    diaryStatus = await invoke("diary_status");
+  } catch (e) {
+    setStatus(t("error", { error: e }));
+    return;
+  }
+
+  const locked = diaryStatus.protected && !diaryStatus.unlocked;
+  el.diaryLocked.hidden = !locked;
+  el.diaryOpen.hidden = locked;
+  // Protection card: offer "set" when open, "remove" when a password exists.
+  el.diaryProtectionState.textContent = diaryStatus.protected
+    ? t("diaryProtected")
+    : t("diaryUnprotected");
+  el.diarySetPwRow.hidden = diaryStatus.protected && diaryStatus.unlocked === false;
+  el.diaryClearPw.hidden = !(diaryStatus.protected && diaryStatus.unlocked);
+  el.diarySetPw.textContent = diaryStatus.protected ? t("diaryChangePw") : t("diarySetPw");
+
+  if (locked) {
+    diaryEntries = [];
+    return;
+  }
+  try {
+    const diary = await invoke("list_diary");
+    diaryEntries = diary.entries || [];
+  } catch (e) {
+    setStatus(t("loadDiaryFailed", { error: e }));
+    return;
+  }
+  renderDiary();
+}
+
+async function unlockDiary() {
+  const pw = el.diaryUnlockPw.value;
+  if (!pw) return;
+  try {
+    await invoke("unlock_diary", { password: pw });
+    el.diaryUnlockPw.value = "";
+    await refreshDiary();
+    setStatus(t("diaryUnlocked"));
+  } catch (e) {
+    showError(String(e));
+  }
+}
+
+// Unix seconds → the user's locale time. Falls back to the raw stamp if the
+// runtime dislikes the value, rather than rendering "Invalid Date".
+function stampTime(secs) {
+  const d = new Date(secs * 1000);
+  return isNaN(d) ? String(secs) : d.toLocaleTimeString(LOCALE);
+}
+
+// The day an entry belongs to, for the date headers.
+function stampDay(secs) {
+  const d = new Date(secs * 1000);
+  return isNaN(d) ? String(secs) : d.toLocaleDateString(LOCALE, {
+    weekday: "short", year: "numeric", month: "short", day: "numeric",
+  });
+}
+
+// Copy to the clipboard. `navigator.clipboard` works in the webview's secure
+// context; the execCommand path is a fallback for anything that refuses it.
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch {}
+    ta.remove();
+  }
+  showToast(t("copied"));
+}
+
+function renderDiary() {
+  el.diary.innerHTML = "";
+
+  const term = (el.diarySearch.value || "").trim().toLowerCase();
+  const matches = diaryEntries.filter(
+    (e) => !term || e.text.toLowerCase().includes(term) || (e.app || "").toLowerCase().includes(term),
+  );
+
+  if (matches.length === 0) {
+    const li = document.createElement("li");
+    li.className = "empty";
+    // Distinguish off / on-but-empty / no-search-match so an empty list never
+    // reads as a broken feature.
+    const key = term ? "diaryNoMatch" : diaryStatus.enabled ? "diaryEmpty" : "diaryOff";
+    li.textContent = t(key);
+    el.diary.append(li);
+    return;
+  }
+
+  // Newest first, with a header each time the day changes.
+  let lastDay = null;
+  for (const entry of [...matches].reverse()) {
+    const day = stampDay(entry.at);
+    if (day !== lastDay) {
+      lastDay = day;
+      const head = document.createElement("li");
+      head.className = "date-head";
+      head.textContent = day;
+      el.diary.append(head);
+    }
+
+    const li = document.createElement("li");
+    const rowHead = document.createElement("div");
+    rowHead.className = "row-head";
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    const when = document.createElement("span");
+    when.textContent = stampTime(entry.at);
+    const app = document.createElement("span");
+    app.className = "app";
+    app.textContent = entry.app || t("unknownApp");
+    meta.append(when, app);
+    if (entry.clip) {
+      const tag = document.createElement("span");
+      tag.className = "clip-tag";
+      tag.textContent = t("diaryClipTag");
+      meta.append(tag);
+    }
+    const copy = document.createElement("button");
+    copy.className = "ghost copy";
+    copy.type = "button";
+    copy.textContent = t("copy");
+    copy.addEventListener("click", () => copyText(entry.text));
+    rowHead.append(meta, copy);
+
+    const text = document.createElement("span");
+    text.className = "text";
+    text.textContent = entry.text;
+    li.append(rowHead, text);
+    el.diary.append(li);
+  }
+}
+
 // ----- Wiring ----------------------------------------------------------------
 
 function wire() {
+  el.tabs.addEventListener("click", (ev) => {
+    const tab = ev.target.closest(".tab");
+    if (tab) showPane(tab.dataset.pane);
+  });
+
   el.enabled.addEventListener("change", async () => {
     if (!ready) return;
     el.enabledLabel.textContent = el.enabled.checked ? t("on") : t("paused");
@@ -601,6 +829,29 @@ function wire() {
     }
   });
 
+  el.setUndoHotkey.addEventListener("click", () =>
+    startCapture({
+      button: el.setUndoHotkey,
+      display: el.undoHotkeyDisplay,
+      command: "set_undo_hotkey",
+      onSet: (vk, mods) => {
+        currentUndoHotkey = vk;
+        currentUndoMods = mods;
+      },
+    }),
+  );
+  el.clearUndoHotkey.addEventListener("click", async () => {
+    try {
+      await invoke("clear_undo_hotkey");
+      currentUndoHotkey = 0;
+      currentUndoMods = 0;
+      renderHotkey();
+      setStatus(t("undoHotkeyCleared"));
+    } catch (e) {
+      setStatus(t("error", { error: e }));
+    }
+  });
+
   el.autostart.addEventListener("change", async () => {
     if (!ready) return;
     try {
@@ -609,6 +860,24 @@ function wire() {
     } catch (e) {
       el.autostart.checked = !el.autostart.checked; // revert on failure
       setStatus(t("error", { error: e }));
+    }
+  });
+
+  // Always-elevated mode triggers a UAC prompt when its scheduled task is
+  // created/removed. Revert the checkbox if that fails or is cancelled.
+  el.elevatedAutostart.addEventListener("change", async () => {
+    if (!ready) return;
+    const want = el.elevatedAutostart.checked;
+    try {
+      await invoke("set_elevated_autostart", { enabled: want });
+      // The backend turns off the normal Run entry when enabling, so mirror that
+      // and lock it out while elevated autostart owns startup.
+      if (want) el.autostart.checked = false;
+      el.autostart.disabled = want;
+      setStatus(want ? t("elevatedAutostartOn") : t("elevatedAutostartOff"));
+    } catch (e) {
+      el.elevatedAutostart.checked = !want; // revert (incl. cancelled UAC)
+      showError(String(e));
     }
   });
 
@@ -635,6 +904,83 @@ function wire() {
       await invoke("clear_user_words");
       await loadWords();
       setStatus(t("forgotAll"));
+    } catch (e) {
+      setStatus(t("error", { error: e }));
+    }
+  });
+
+  // Turning the diary on is a privacy decision, so it is confirmed rather than
+  // taken on a stray click; turning it off never is.
+  el.diaryEnabled.addEventListener("change", async () => {
+    if (el.diaryEnabled.checked && !confirm(t("diaryConfirm"))) {
+      el.diaryEnabled.checked = false;
+      return;
+    }
+    await apply();
+    await refreshDiary();
+  });
+
+  el.diaryClipboard.addEventListener("change", apply);
+  el.diarySkipShort.addEventListener("change", apply);
+  el.diaryMaxEntries.addEventListener("change", apply);
+  el.diaryRetentionDays.addEventListener("change", apply);
+  el.diaryMaxSizeMb.addEventListener("change", apply);
+  el.diarySearch.addEventListener("input", renderDiary);
+
+  el.diarySetPw.addEventListener("click", async () => {
+    const pw = el.diaryPw.value;
+    if (!pw) {
+      showError(t("diaryPwEmpty"));
+      return;
+    }
+    if (pw !== el.diaryPw2.value) {
+      showError(t("diaryPwMismatch"));
+      return;
+    }
+    if (!confirm(t("diaryPwConfirm"))) return;
+    try {
+      await invoke("set_diary_password", { password: pw });
+      el.diaryPw.value = "";
+      el.diaryPw2.value = "";
+      await refreshDiary();
+      setStatus(t("diaryPwSet"));
+    } catch (e) {
+      showError(String(e));
+    }
+  });
+
+  el.diaryClearPw.addEventListener("click", async () => {
+    if (!confirm(t("diaryClearPwConfirm"))) return;
+    try {
+      await invoke("clear_diary_password");
+      await refreshDiary();
+      setStatus(t("diaryPwRemoved"));
+    } catch (e) {
+      showError(String(e));
+    }
+  });
+
+  el.diaryUnlock.addEventListener("click", unlockDiary);
+  el.diaryUnlockPw.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") unlockDiary();
+  });
+
+  el.diaryExport.addEventListener("click", async () => {
+    try {
+      const path = await invoke("export_diary");
+      showToast(t("diaryExported"));
+      setStatus(t("diaryExportedTo", { path }));
+    } catch (e) {
+      showError(String(e));
+    }
+  });
+
+  el.clearDiary.addEventListener("click", async () => {
+    if (!confirm(t("diaryClearConfirm"))) return;
+    try {
+      await invoke("clear_diary");
+      await refreshDiary();
+      setStatus(t("diaryCleared"));
     } catch (e) {
       setStatus(t("error", { error: e }));
     }
@@ -699,9 +1045,18 @@ async function init() {
     const config = await invoke("get_config");
     populate(config);
     el.autostart.checked = await invoke("get_autostart");
+    el.elevatedAutostart.checked = await invoke("get_elevated_autostart");
+    // While elevated autostart owns startup, the normal one is redundant.
+    el.autostart.disabled = el.elevatedAutostart.checked;
     setStatus(t("ready"));
   } catch (e) {
     setStatus(t("loadFailed", { error: e }));
+  }
+  try {
+    appVersion = await invoke("app_version");
+    renderAbout();
+  } catch (e) {
+    setStatus(t("error", { error: e }));
   }
   await warnAboutHotkeyConflicts();
   checkForUpdate(true);
@@ -737,7 +1092,11 @@ async function warnAboutHotkeyConflicts() {
   try {
     const conflicts = await invoke("hotkey_conflicts");
     if (conflicts.length === 0) return;
-    const label = { manual: t("conflictManual"), selection: t("conflictSelection") };
+    const label = {
+      manual: t("conflictManual"),
+      selection: t("conflictSelection"),
+      undo: t("conflictUndo"),
+    };
     showError(
       conflicts.map((c) => `${label[c.which] || c.which}: ${c.message}`).join(" "),
     );

@@ -18,6 +18,12 @@ const I18N = {
     on: "On",
     paused: "Paused",
 
+    tabGeneral: "General",
+    tabLayouts: "Layouts",
+    tabHotkeys: "Hotkeys",
+    tabHistory: "History",
+    tabAbout: "About",
+
     sensitivity: "Sensitivity",
     sensitivityHint:
       "How sure Palimpsest must be before it corrects. Lower is more cautious (fewer false positives); higher is more eager.",
@@ -46,16 +52,25 @@ const I18N = {
       "Language of this window and the tray menu. It does not change which languages Palimpsest corrects — that follows your layout pairs.",
     systemLanguage: "System language",
 
-    advanced: "Advanced",
     manualHotkey: "Manual hotkey",
     setHotkey: "Set hotkey",
     clear: "Clear",
     manualHotkeyHint:
-      "Click “Set hotkey”, then press a combination. Default Ctrl+Shift+F9. On laptops and 75% keyboards prefer a chord — keys like Pause or Scroll Lock often aren't there. Forces a fix on the current word. Esc cancels.",
+      "Click “Set hotkey”, then press a combination. Default Ctrl+Shift+F9. On laptops and 75% keyboards prefer a chord — keys like Pause or Scroll Lock often aren't there. Converts the word you are typing, or the one just behind the caret. Esc cancels.",
     selectionHotkey: "Convert selection hotkey",
     selectionHotkeyHint:
       "Select any text, then press this to retype it in the other layout (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+F8; a modifier chord works on every keyboard. Esc cancels.",
+    undoHotkey: "Undo hotkey",
+    undoHotkeyHint:
+      "Reverts the last correction without leaving what you are typing — the same as “Undo last”. Default Ctrl+Shift+F10. Esc cancels.",
+
+    startupAndLogs: "Startup and diagnostics",
     autostart: "Launch Palimpsest at login",
+    elevatedAutostart: "Always run as administrator",
+    elevatedAutostartHint:
+      "Needed for hotkeys in administrator windows. Sets up a highest-privilege task and redirects login, manual, and post-update starts through it. Confirm once (UAC). Replaces normal autostart.",
+    elevatedAutostartOn: "Palimpsest will always start as administrator.",
+    elevatedAutostartOff: "Always-run-as-administrator turned off.",
     openLogs: "Open logs folder",
     logsHint: "Diagnostics for bug reports. Never contains what you type.",
 
@@ -80,12 +95,75 @@ const I18N = {
     forgetAll: "Forget all",
     learnOnUndo: "Learn a word when I undo its correction",
     learnedWordsHint:
-      "Undoing a correction tells Palimpsest the word was right as typed, so it stops correcting it. These words are the only thing Palimpsest saves from what you type — stored locally in <code>user_words.json</code>, never sent anywhere. Turn the setting off to save nothing at all.",
+      "Undoing a correction tells Palimpsest the word was right as typed, so it stops correcting it. Stored locally in <code>user_words.json</code>, never sent anywhere. Turn the setting off to save nothing at all.",
     nothingLearned: "Nothing learned yet.",
     forget: "Forget",
     forgotWord: "Forgot “{word}”.",
     forgotAll: "Forgot every learned word.",
     learnedToast: "Learned “{word}” — won't correct it again",
+
+    tabDiary: "Diary",
+    diary: "Typing diary",
+    diaryEnabled: "Record",
+    diaryClipboard: "Also record clipboard (copied text)",
+    diarySkipShort: "Skip entries shorter than two words",
+    diaryMaxEntries: "Maximum entries",
+    diaryRetentionDays: "Keep for days",
+    diaryMaxSizeMb: "Maximum file size (MiB)",
+    diaryLimitsHint:
+      "Oldest entries are removed first. Set days or file size to 0 for no limit.",
+    clearDiary: "Erase diary",
+    diaryWarning:
+      "<strong>This is a keystroke log.</strong> With it on, every word you type is written to disk on this machine — not just corrections. Anyone with access to your user profile can read it unless you protect it with a password below. Nothing is recorded in password fields or ignored apps, nothing is ever sent anywhere, and it is off unless you switch it on here.",
+    diaryConfirm:
+      "Turn the typing diary on?\n\nEvery word you type will be written to disk on this machine, not just corrections. Anyone who can read your user profile can read it unless you set a password. You can erase it at any time.",
+    diaryProtection: "Password",
+    diaryProtectionHint:
+      "A password encrypts the diary on disk so it can't be read without it. You'll need it to view the diary each time you open Palimpsest. It cannot be recovered — if you forget it, the diary is lost for good.",
+    diaryProtected: "protected",
+    diaryUnprotected: "not protected",
+    diaryPwPlaceholder: "Password",
+    diaryPw2Placeholder: "Repeat password",
+    diarySetPw: "Set password",
+    diaryChangePw: "Change password",
+    diaryClearPw: "Remove password",
+    diaryPwConfirm:
+      "Set a diary password?\n\nThe diary will be encrypted on disk. You'll need this password to view it, and it CANNOT be recovered — if you forget it, the diary is lost for good.",
+    diaryClearPwConfirm: "Remove the password and store the diary unencrypted?",
+    diaryPwEmpty: "Enter a password.",
+    diaryPwMismatch: "The two passwords don't match.",
+    diaryPwSet: "Diary password set.",
+    diaryPwRemoved: "Diary password removed.",
+    diaryEntries: "Entries",
+    diaryExport: "Export…",
+    diaryExported: "Diary exported.",
+    diaryExportedTo: "Exported to {path}",
+    diarySearch: "Search…",
+    diaryNoMatch: "No entries match your search.",
+    diaryClipTag: "clipboard",
+    diaryLockedHint: "The diary is locked. Enter your password to view it and resume recording.",
+    diaryUnlock: "Unlock",
+    diaryUnlocked: "Diary unlocked.",
+    diaryClearConfirm: "Erase the entire diary? This can't be undone.",
+    diaryOff: "The diary is off. Nothing is being recorded.",
+    diaryEmpty: "Nothing recorded yet.",
+    diaryCleared: "Diary erased.",
+    loadDiaryFailed: "Couldn't load the diary: {error}",
+    unknownApp: "unknown app",
+    copy: "Copy",
+    copied: "Copied.",
+
+    aboutVersion: "Version {version}",
+    aboutWhat:
+      "Palimpsest watches for a word typed in the wrong keyboard layout, erases it, switches the layout, and retypes what you meant. Everything happens on this machine.",
+    aboutCredits: "Credits",
+    creditWordlists:
+      "Word lists derived from <strong>FrequencyWords</strong> by Hermit Dave (MIT), built from 2018 OpenSubtitles corpora.",
+    creditTauri: "Built with <strong>Tauri 2</strong> and Rust.",
+    creditPunto:
+      "Inspired by <strong>Punto Switcher</strong>, which taught a generation of bilingual typists that this problem was solvable.",
+    aboutLicence: "Licence and source",
+    aboutLicenceText: "Licensed under Apache-2.0. Source, issues, and releases:",
 
     saved: "Saved.",
     ready: "Ready.",
@@ -100,6 +178,7 @@ const I18N = {
     hotkeyUnchanged: "Hotkey unchanged.",
     hotkeyCleared: "Hotkey cleared.",
     selectionHotkeyCleared: "Selection hotkey cleared.",
+    undoHotkeyCleared: "Undo hotkey cleared.",
     hotkeySet: "Hotkey set to {label}.",
     hotkeyRejected: "{label} can't be used. {error}",
     hotkeyTimeout:
@@ -107,6 +186,7 @@ const I18N = {
     hotkeyCheckFailed: "Couldn't check hotkeys: {error}",
     conflictManual: "Manual hotkey",
     conflictSelection: "Selection hotkey",
+    conflictUndo: "Undo hotkey",
     revertedToast: "Reverted → {text}",
     willLaunch: "Will launch at login.",
     wontLaunch: "Won't launch at login.",
@@ -117,6 +197,12 @@ const I18N = {
     masterSwitch: "Главный переключатель",
     on: "Вкл.",
     paused: "Пауза",
+
+    tabGeneral: "Общие",
+    tabLayouts: "Раскладки",
+    tabHotkeys: "Сочетания",
+    tabHistory: "История",
+    tabAbout: "О программе",
 
     sensitivity: "Чувствительность",
     sensitivityHint:
@@ -146,16 +232,25 @@ const I18N = {
       "Язык этого окна и меню в трее. На то, какие языки Palimpsest исправляет, он не влияет — это определяют пары раскладок.",
     systemLanguage: "Язык системы",
 
-    advanced: "Дополнительно",
     manualHotkey: "Горячая клавиша вручную",
     setHotkey: "Назначить",
     clear: "Сбросить",
     manualHotkeyHint:
-      "Нажмите «Назначить» и введите сочетание. По умолчанию Ctrl+Shift+F9. На ноутбуках и клавиатурах 75% лучше выбирать сочетание — клавиш вроде Pause или Scroll Lock там часто нет. Принудительно исправляет текущее слово. Esc — отмена.",
+      "Нажмите «Назначить» и введите сочетание. По умолчанию Ctrl+Shift+F9. На ноутбуках и клавиатурах 75% лучше выбирать сочетание — клавиш вроде Pause или Scroll Lock там часто нет. Преобразует слово, которое вы набираете, или предыдущее — то, что стоит перед курсором. Esc — отмена.",
     selectionHotkey: "Горячая клавиша для выделения",
     selectionHotkeyHint:
       "Выделите любой текст и нажмите это сочетание, чтобы ввести его заново в другой раскладке (например, «ghbdtn» → «привет»). По умолчанию Ctrl+Shift+F8; сочетание с модификатором работает на любой клавиатуре. Esc — отмена.",
+    undoHotkey: "Горячая клавиша отмены",
+    undoHotkeyHint:
+      "Отменяет последнее исправление, не отрываясь от набора, — то же, что «Отменить последнее». По умолчанию Ctrl+Shift+F10. Esc — отмена.",
+
+    startupAndLogs: "Запуск и диагностика",
     autostart: "Запускать Palimpsest при входе в систему",
+    elevatedAutostart: "Всегда запускать от имени администратора",
+    elevatedAutostartHint:
+      "Нужно для горячих клавиш в окнах администратора. Создаётся задача с наивысшими правами, через которую выполняются вход, ручной запуск и запуск после обновления. Одно подтверждение UAC. Заменяет обычный автозапуск.",
+    elevatedAutostartOn: "Palimpsest всегда будет запускаться от имени администратора.",
+    elevatedAutostartOff: "Постоянный запуск от администратора выключен.",
     openLogs: "Открыть папку логов",
     logsHint: "Диагностика для сообщений об ошибках. Никогда не содержит набранный текст.",
 
@@ -180,12 +275,75 @@ const I18N = {
     forgetAll: "Забыть все",
     learnOnUndo: "Запоминать слово, когда я отменяю его исправление",
     learnedWordsHint:
-      "Отмена исправления говорит Palimpsest, что слово было набрано правильно, и он перестаёт его исправлять. Эти слова — единственное, что Palimpsest сохраняет из набранного вами: они лежат локально в <code>user_words.json</code> и никуда не отправляются. Выключите настройку, чтобы не сохранялось ничего.",
+      "Отмена исправления говорит Palimpsest, что слово было набрано правильно, и он перестаёт его исправлять. Слова лежат локально в <code>user_words.json</code> и никуда не отправляются. Выключите настройку, чтобы не сохранялось ничего.",
     nothingLearned: "Пока ничего не выучено.",
     forget: "Забыть",
     forgotWord: "Слово «{word}» забыто.",
     forgotAll: "Все выученные слова забыты.",
     learnedToast: "Запомнили «{word}» — больше не исправляем",
+
+    tabDiary: "Дневник",
+    diary: "Дневник набора",
+    diaryEnabled: "Записывать",
+    diaryClipboard: "Записывать также буфер обмена (скопированный текст)",
+    diarySkipShort: "Пропускать записи короче двух слов",
+    diaryMaxEntries: "Максимум записей",
+    diaryRetentionDays: "Хранить дней",
+    diaryMaxSizeMb: "Максимальный размер файла (МиБ)",
+    diaryLimitsHint:
+      "Сначала удаляются самые старые записи. 0 дней или 0 МиБ означает без ограничения.",
+    clearDiary: "Стереть дневник",
+    diaryWarning:
+      "<strong>Это журнал нажатий клавиш.</strong> Когда он включён, каждое набранное слово записывается на диск этого компьютера — не только исправления. Прочитать его сможет любой, у кого есть доступ к вашему профилю, если не защитить дневник паролем ниже. В полях паролей и в приложениях-исключениях ничего не пишется, никуда ничего не отправляется, и по умолчанию всё это выключено.",
+    diaryConfirm:
+      "Включить дневник набора?\n\nКаждое набранное слово будет записываться на диск этого компьютера, не только исправления. Без пароля прочитать его сможет любой, у кого есть доступ к вашему профилю. Стереть дневник можно в любой момент.",
+    diaryProtection: "Пароль",
+    diaryProtectionHint:
+      "Пароль шифрует дневник на диске, так что без него прочитать нельзя. Он понадобится, чтобы открывать дневник при каждом запуске Palimpsest. Восстановить его невозможно — если забудете, дневник потерян навсегда.",
+    diaryProtected: "защищён",
+    diaryUnprotected: "без пароля",
+    diaryPwPlaceholder: "Пароль",
+    diaryPw2Placeholder: "Повторите пароль",
+    diarySetPw: "Задать пароль",
+    diaryChangePw: "Сменить пароль",
+    diaryClearPw: "Убрать пароль",
+    diaryPwConfirm:
+      "Задать пароль дневника?\n\nДневник будет зашифрован на диске. Пароль понадобится для просмотра, и восстановить его НЕЛЬЗЯ — если забудете, дневник потерян навсегда.",
+    diaryClearPwConfirm: "Убрать пароль и хранить дневник без шифрования?",
+    diaryPwEmpty: "Введите пароль.",
+    diaryPwMismatch: "Пароли не совпадают.",
+    diaryPwSet: "Пароль дневника задан.",
+    diaryPwRemoved: "Пароль дневника убран.",
+    diaryEntries: "Записи",
+    diaryExport: "Экспорт…",
+    diaryExported: "Дневник экспортирован.",
+    diaryExportedTo: "Экспортировано в {path}",
+    diarySearch: "Поиск…",
+    diaryNoMatch: "Нет записей по вашему запросу.",
+    diaryClipTag: "буфер",
+    diaryLockedHint: "Дневник заблокирован. Введите пароль, чтобы просмотреть его и возобновить запись.",
+    diaryUnlock: "Разблокировать",
+    diaryUnlocked: "Дневник разблокирован.",
+    diaryClearConfirm: "Стереть весь дневник? Отменить нельзя.",
+    diaryOff: "Дневник выключен. Ничего не записывается.",
+    diaryEmpty: "Пока ничего не записано.",
+    diaryCleared: "Дневник стёрт.",
+    loadDiaryFailed: "Не удалось загрузить дневник: {error}",
+    unknownApp: "неизвестное приложение",
+    copy: "Копировать",
+    copied: "Скопировано.",
+
+    aboutVersion: "Версия {version}",
+    aboutWhat:
+      "Palimpsest замечает слово, набранное не в той раскладке, стирает его, переключает раскладку и набирает то, что вы имели в виду. Всё происходит на этом компьютере.",
+    aboutCredits: "Благодарности",
+    creditWordlists:
+      "Словари построены на основе <strong>FrequencyWords</strong> Hermit Dave (MIT) по корпусам OpenSubtitles 2018 года.",
+    creditTauri: "Сделано на <strong>Tauri 2</strong> и Rust.",
+    creditPunto:
+      "Вдохновлено <strong>Punto Switcher</strong>, который показал целому поколению двуязычных наборщиков, что эта задача решаема.",
+    aboutLicence: "Лицензия и исходный код",
+    aboutLicenceText: "Лицензия Apache-2.0. Исходный код, задачи и релизы:",
 
     saved: "Сохранено.",
     ready: "Готово.",
@@ -200,6 +358,7 @@ const I18N = {
     hotkeyUnchanged: "Сочетание не изменено.",
     hotkeyCleared: "Сочетание сброшено.",
     selectionHotkeyCleared: "Сочетание для выделения сброшено.",
+    undoHotkeyCleared: "Сочетание отмены сброшено.",
     hotkeySet: "Назначено сочетание {label}.",
     hotkeyRejected: "{label} использовать нельзя. {error}",
     hotkeyTimeout:
@@ -207,6 +366,7 @@ const I18N = {
     hotkeyCheckFailed: "Не удалось проверить сочетания: {error}",
     conflictManual: "Горячая клавиша вручную",
     conflictSelection: "Горячая клавиша для выделения",
+    conflictUndo: "Горячая клавиша отмены",
     revertedToast: "Возвращено → {text}",
     willLaunch: "Будет запускаться при входе в систему.",
     wontLaunch: "Не будет запускаться при входе в систему.",
@@ -217,6 +377,12 @@ const I18N = {
     masterSwitch: "Головний перемикач",
     on: "Увімк.",
     paused: "Пауза",
+
+    tabGeneral: "Загальні",
+    tabLayouts: "Розкладки",
+    tabHotkeys: "Сполучення",
+    tabHistory: "Історія",
+    tabAbout: "Про програму",
 
     sensitivity: "Чутливість",
     sensitivityHint:
@@ -246,16 +412,25 @@ const I18N = {
       "Мова цього вікна та меню в треї. На те, які мови Palimpsest виправляє, вона не впливає — це визначають пари розкладок.",
     systemLanguage: "Мова системи",
 
-    advanced: "Додатково",
     manualHotkey: "Гаряча клавіша вручну",
     setHotkey: "Призначити",
     clear: "Скинути",
     manualHotkeyHint:
-      "Натисніть «Призначити» й уведіть сполучення. Типово Ctrl+Shift+F9. На ноутбуках і клавіатурах 75% краще обирати сполучення — клавіш на кшталт Pause чи Scroll Lock там часто немає. Примусово виправляє поточне слово. Esc — скасування.",
+      "Натисніть «Призначити» й уведіть сполучення. Типово Ctrl+Shift+F9. На ноутбуках і клавіатурах 75% краще обирати сполучення — клавіш на кшталт Pause чи Scroll Lock там часто немає. Перетворює слово, яке ви набираєте, або попереднє — те, що стоїть перед курсором. Esc — скасування.",
     selectionHotkey: "Гаряча клавіша для виділення",
     selectionHotkeyHint:
       "Виділіть будь-який текст і натисніть це сполучення, щоб увести його заново в іншій розкладці (наприклад, «ghbdtn» → «привет»). Типово Ctrl+Shift+F8; сполучення з модифікатором працює на будь-якій клавіатурі. Esc — скасування.",
+    undoHotkey: "Гаряча клавіша скасування",
+    undoHotkeyHint:
+      "Скасовує останнє виправлення, не відриваючись від набору, — те саме, що «Скасувати останнє». Типово Ctrl+Shift+F10. Esc — скасування.",
+
+    startupAndLogs: "Запуск і діагностика",
     autostart: "Запускати Palimpsest під час входу в систему",
+    elevatedAutostart: "Завжди запускати від імені адміністратора",
+    elevatedAutostartHint:
+      "Потрібно для гарячих клавіш у вікнах адміністратора. Створюється завдання з найвищими правами, через яке виконуються вхід, ручний запуск і запуск після оновлення. Одне підтвердження UAC. Замінює звичайний автозапуск.",
+    elevatedAutostartOn: "Palimpsest завжди запускатиметься від імені адміністратора.",
+    elevatedAutostartOff: "Постійний запуск від адміністратора вимкнено.",
     openLogs: "Відкрити теку журналів",
     logsHint: "Діагностика для звітів про помилки. Ніколи не містить набраного тексту.",
 
@@ -280,12 +455,75 @@ const I18N = {
     forgetAll: "Забути все",
     learnOnUndo: "Запам'ятовувати слово, коли я скасовую його виправлення",
     learnedWordsHint:
-      "Скасування виправлення каже Palimpsest, що слово було набране правильно, і він перестає його виправляти. Ці слова — єдине, що Palimpsest зберігає з набраного вами: вони лежать локально у <code>user_words.json</code> і нікуди не надсилаються. Вимкніть налаштування, щоб не зберігалося нічого.",
+      "Скасування виправлення каже Palimpsest, що слово було набране правильно, і він перестає його виправляти. Слова лежать локально у <code>user_words.json</code> і нікуди не надсилаються. Вимкніть налаштування, щоб не зберігалося нічого.",
     nothingLearned: "Поки нічого не вивчено.",
     forget: "Забути",
     forgotWord: "Слово «{word}» забуто.",
     forgotAll: "Усі вивчені слова забуто.",
     learnedToast: "Запам'ятали «{word}» — більше не виправляємо",
+
+    tabDiary: "Щоденник",
+    diary: "Щоденник набору",
+    diaryEnabled: "Записувати",
+    diaryClipboard: "Записувати також буфер обміну (скопійований текст)",
+    diarySkipShort: "Пропускати записи, коротші за два слова",
+    diaryMaxEntries: "Максимум записів",
+    diaryRetentionDays: "Зберігати днів",
+    diaryMaxSizeMb: "Максимальний розмір файлу (МіБ)",
+    diaryLimitsHint:
+      "Спочатку видаляються найстаріші записи. 0 днів або 0 МіБ означає без обмеження.",
+    clearDiary: "Стерти щоденник",
+    diaryWarning:
+      "<strong>Це журнал натискань клавіш.</strong> Коли він увімкнений, кожне набране слово записується на диск цього комп'ютера — не лише виправлення. Будь-хто, хто має доступ до вашого профілю, зможе його прочитати, якщо не захистити щоденник паролем нижче. У полях паролів і в застосунках-винятках нічого не пишеться, нікуди нічого не надсилається, і типово все це вимкнено.",
+    diaryConfirm:
+      "Увімкнути щоденник набору?\n\nКожне набране слово записуватиметься на диск цього комп'ютера, не лише виправлення. Без пароля прочитати його зможе будь-хто, хто має доступ до вашого профілю. Стерти щоденник можна будь-коли.",
+    diaryProtection: "Пароль",
+    diaryProtectionHint:
+      "Пароль шифрує щоденник на диску, тож без нього прочитати не можна. Він знадобиться, щоб відкривати щоденник під час кожного запуску Palimpsest. Відновити його неможливо — якщо забудете, щоденник втрачено назавжди.",
+    diaryProtected: "захищений",
+    diaryUnprotected: "без пароля",
+    diaryPwPlaceholder: "Пароль",
+    diaryPw2Placeholder: "Повторіть пароль",
+    diarySetPw: "Задати пароль",
+    diaryChangePw: "Змінити пароль",
+    diaryClearPw: "Прибрати пароль",
+    diaryPwConfirm:
+      "Задати пароль щоденника?\n\nЩоденник буде зашифровано на диску. Пароль знадобиться для перегляду, і відновити його НЕМОЖЛИВО — якщо забудете, щоденник втрачено назавжди.",
+    diaryClearPwConfirm: "Прибрати пароль і зберігати щоденник без шифрування?",
+    diaryPwEmpty: "Уведіть пароль.",
+    diaryPwMismatch: "Паролі не збігаються.",
+    diaryPwSet: "Пароль щоденника задано.",
+    diaryPwRemoved: "Пароль щоденника прибрано.",
+    diaryEntries: "Записи",
+    diaryExport: "Експорт…",
+    diaryExported: "Щоденник експортовано.",
+    diaryExportedTo: "Експортовано до {path}",
+    diarySearch: "Пошук…",
+    diaryNoMatch: "Немає записів за вашим запитом.",
+    diaryClipTag: "буфер",
+    diaryLockedHint: "Щоденник заблоковано. Уведіть пароль, щоб переглянути його та відновити запис.",
+    diaryUnlock: "Розблокувати",
+    diaryUnlocked: "Щоденник розблоковано.",
+    diaryClearConfirm: "Стерти весь щоденник? Скасувати не можна.",
+    diaryOff: "Щоденник вимкнено. Нічого не записується.",
+    diaryEmpty: "Поки нічого не записано.",
+    diaryCleared: "Щоденник стерто.",
+    loadDiaryFailed: "Не вдалося завантажити щоденник: {error}",
+    unknownApp: "невідомий застосунок",
+    copy: "Копіювати",
+    copied: "Скопійовано.",
+
+    aboutVersion: "Версія {version}",
+    aboutWhat:
+      "Palimpsest помічає слово, набране не в тій розкладці, стирає його, перемикає розкладку й набирає те, що ви мали на увазі. Усе відбувається на цьому комп'ютері.",
+    aboutCredits: "Подяки",
+    creditWordlists:
+      "Словники побудовані на основі <strong>FrequencyWords</strong> Hermit Dave (MIT) за корпусами OpenSubtitles 2018 року.",
+    creditTauri: "Зроблено на <strong>Tauri 2</strong> і Rust.",
+    creditPunto:
+      "Натхнено <strong>Punto Switcher</strong>, який показав цілому поколінню двомовних набирачів, що це завдання можна розв'язати.",
+    aboutLicence: "Ліцензія та вихідний код",
+    aboutLicenceText: "Ліцензія Apache-2.0. Вихідний код, задачі та релізи:",
 
     saved: "Збережено.",
     ready: "Готово.",
@@ -300,6 +538,7 @@ const I18N = {
     hotkeyUnchanged: "Сполучення не змінено.",
     hotkeyCleared: "Сполучення скинуто.",
     selectionHotkeyCleared: "Сполучення для виділення скинуто.",
+    undoHotkeyCleared: "Сполучення скасування скинуто.",
     hotkeySet: "Призначено сполучення {label}.",
     hotkeyRejected: "{label} використати не можна. {error}",
     hotkeyTimeout:
@@ -307,6 +546,7 @@ const I18N = {
     hotkeyCheckFailed: "Не вдалося перевірити сполучення: {error}",
     conflictManual: "Гаряча клавіша вручну",
     conflictSelection: "Гаряча клавіша для виділення",
+    conflictUndo: "Гаряча клавіша скасування",
     revertedToast: "Повернуто → {text}",
     willLaunch: "Запускатиметься під час входу в систему.",
     wontLaunch: "Не запускатиметься під час входу в систему.",
@@ -317,6 +557,12 @@ const I18N = {
     masterSwitch: "Hauptschalter",
     on: "An",
     paused: "Pausiert",
+
+    tabGeneral: "Allgemein",
+    tabLayouts: "Belegungen",
+    tabHotkeys: "Kürzel",
+    tabHistory: "Verlauf",
+    tabAbout: "Über",
 
     sensitivity: "Empfindlichkeit",
     sensitivityHint:
@@ -346,16 +592,25 @@ const I18N = {
       "Sprache dieses Fensters und des Tray-Menüs. Sie ändert nicht, welche Sprachen Palimpsest korrigiert — das ergibt sich aus den Belegungspaaren.",
     systemLanguage: "Systemsprache",
 
-    advanced: "Erweitert",
     manualHotkey: "Manuelles Tastenkürzel",
     setHotkey: "Kürzel festlegen",
     clear: "Löschen",
     manualHotkeyHint:
-      "Auf „Kürzel festlegen“ klicken und eine Kombination drücken. Standard ist Strg+Umschalt+F9. Auf Laptops und 75%-Tastaturen besser eine Kombination wählen — Tasten wie Pause oder Rollen fehlen dort oft. Erzwingt eine Korrektur des aktuellen Worts. Esc bricht ab.",
+      "Auf „Kürzel festlegen“ klicken und eine Kombination drücken. Standard ist Strg+Umschalt+F9. Auf Laptops und 75%-Tastaturen besser eine Kombination wählen — Tasten wie Pause oder Rollen fehlen dort oft. Wandelt das Wort um, das gerade getippt wird, oder das direkt vor dem Cursor. Esc bricht ab.",
     selectionHotkey: "Kürzel für Auswahl umwandeln",
     selectionHotkeyHint:
       "Beliebigen Text markieren und dieses Kürzel drücken, um ihn in der anderen Belegung neu zu schreiben (z. B. „ghbdtn“ → „привет“). Standard ist Strg+Umschalt+F8; eine Kombination mit Modifikator funktioniert auf jeder Tastatur. Esc bricht ab.",
+    undoHotkey: "Kürzel zum Rückgängigmachen",
+    undoHotkeyHint:
+      "Macht die letzte Korrektur rückgängig, ohne das Tippen zu unterbrechen — dasselbe wie „Letzte rückgängig“. Standard ist Strg+Umschalt+F10. Esc bricht ab.",
+
+    startupAndLogs: "Start und Diagnose",
     autostart: "Palimpsest bei der Anmeldung starten",
+    elevatedAutostart: "Immer als Administrator starten",
+    elevatedAutostartHint:
+      "Nötig für Tastenkürzel in Administratorfenstern. Richtet eine Aufgabe mit höchsten Rechten ein und leitet Anmeldung, manuelle Starts und Neustarts nach Updates darüber um. Einmal per UAC bestätigen. Ersetzt den normalen Autostart.",
+    elevatedAutostartOn: "Palimpsest startet künftig immer als Administrator.",
+    elevatedAutostartOff: "Dauerhafter Administrator-Start deaktiviert.",
     openLogs: "Log-Ordner öffnen",
     logsHint: "Diagnose für Fehlerberichte. Enthält nie, was getippt wird.",
 
@@ -380,12 +635,75 @@ const I18N = {
     forgetAll: "Alle vergessen",
     learnOnUndo: "Wort lernen, wenn ich seine Korrektur rückgängig mache",
     learnedWordsHint:
-      "Eine rückgängig gemachte Korrektur sagt Palimpsest, dass das Wort so richtig war, und es korrigiert es nicht mehr. Diese Wörter sind das Einzige, was Palimpsest vom Getippten speichert — lokal in <code>user_words.json</code>, niemals irgendwohin gesendet. Die Einstellung ausschalten, um gar nichts zu speichern.",
+      "Eine rückgängig gemachte Korrektur sagt Palimpsest, dass das Wort so richtig war, und es korrigiert es nicht mehr. Lokal in <code>user_words.json</code> gespeichert, niemals irgendwohin gesendet. Die Einstellung ausschalten, um gar nichts zu speichern.",
     nothingLearned: "Noch nichts gelernt.",
     forget: "Vergessen",
     forgotWord: "„{word}“ vergessen.",
     forgotAll: "Alle gelernten Wörter vergessen.",
     learnedToast: "„{word}“ gelernt — wird nicht mehr korrigiert",
+
+    tabDiary: "Tagebuch",
+    diary: "Tipp-Tagebuch",
+    diaryEnabled: "Aufzeichnen",
+    diaryClipboard: "Auch die Zwischenablage aufzeichnen (kopierter Text)",
+    diarySkipShort: "Einträge unter zwei Wörtern überspringen",
+    diaryMaxEntries: "Maximale Einträge",
+    diaryRetentionDays: "Aufbewahrung in Tagen",
+    diaryMaxSizeMb: "Maximale Dateigröße (MiB)",
+    diaryLimitsHint:
+      "Die ältesten Einträge werden zuerst entfernt. 0 Tage oder 0 MiB bedeutet unbegrenzt.",
+    clearDiary: "Tagebuch löschen",
+    diaryWarning:
+      "<strong>Das ist ein Tastenprotokoll.</strong> Eingeschaltet wird jedes getippte Wort auf die Festplatte dieses Rechners geschrieben — nicht nur Korrekturen. Wer Zugriff auf Ihr Benutzerprofil hat, kann es lesen, sofern Sie es unten nicht mit einem Passwort schützen. In Passwortfeldern und ignorierten Apps wird nichts aufgezeichnet, es wird nie irgendwohin gesendet, und ohne diesen Schalter bleibt alles aus.",
+    diaryConfirm:
+      "Tipp-Tagebuch einschalten?\n\nJedes getippte Wort wird auf die Festplatte dieses Rechners geschrieben, nicht nur Korrekturen. Ohne Passwort kann jeder es lesen, der Ihr Benutzerprofil lesen kann. Löschen können Sie es jederzeit.",
+    diaryProtection: "Passwort",
+    diaryProtectionHint:
+      "Ein Passwort verschlüsselt das Tagebuch auf der Festplatte, sodass es ohne dieses nicht lesbar ist. Sie brauchen es, um das Tagebuch bei jedem Start von Palimpsest anzusehen. Es kann nicht wiederhergestellt werden — vergessen Sie es, ist das Tagebuch für immer verloren.",
+    diaryProtected: "geschützt",
+    diaryUnprotected: "ungeschützt",
+    diaryPwPlaceholder: "Passwort",
+    diaryPw2Placeholder: "Passwort wiederholen",
+    diarySetPw: "Passwort festlegen",
+    diaryChangePw: "Passwort ändern",
+    diaryClearPw: "Passwort entfernen",
+    diaryPwConfirm:
+      "Ein Tagebuch-Passwort festlegen?\n\nDas Tagebuch wird auf der Festplatte verschlüsselt. Sie brauchen dieses Passwort zum Ansehen, und es kann NICHT wiederhergestellt werden — vergessen Sie es, ist das Tagebuch für immer verloren.",
+    diaryClearPwConfirm: "Das Passwort entfernen und das Tagebuch unverschlüsselt speichern?",
+    diaryPwEmpty: "Bitte ein Passwort eingeben.",
+    diaryPwMismatch: "Die beiden Passwörter stimmen nicht überein.",
+    diaryPwSet: "Tagebuch-Passwort festgelegt.",
+    diaryPwRemoved: "Tagebuch-Passwort entfernt.",
+    diaryEntries: "Einträge",
+    diaryExport: "Exportieren…",
+    diaryExported: "Tagebuch exportiert.",
+    diaryExportedTo: "Exportiert nach {path}",
+    diarySearch: "Suchen…",
+    diaryNoMatch: "Keine Einträge passen zur Suche.",
+    diaryClipTag: "Zwischenablage",
+    diaryLockedHint: "Das Tagebuch ist gesperrt. Passwort eingeben, um es anzusehen und die Aufzeichnung fortzusetzen.",
+    diaryUnlock: "Entsperren",
+    diaryUnlocked: "Tagebuch entsperrt.",
+    diaryClearConfirm: "Das ganze Tagebuch löschen? Das lässt sich nicht rückgängig machen.",
+    diaryOff: "Das Tagebuch ist aus. Es wird nichts aufgezeichnet.",
+    diaryEmpty: "Noch nichts aufgezeichnet.",
+    diaryCleared: "Tagebuch gelöscht.",
+    loadDiaryFailed: "Tagebuch konnte nicht geladen werden: {error}",
+    unknownApp: "unbekannte App",
+    copy: "Kopieren",
+    copied: "Kopiert.",
+
+    aboutVersion: "Version {version}",
+    aboutWhat:
+      "Palimpsest erkennt ein Wort in der falschen Tastaturbelegung, löscht es, wechselt die Belegung und tippt das, was gemeint war. Alles passiert auf diesem Rechner.",
+    aboutCredits: "Dank",
+    creditWordlists:
+      "Wortlisten abgeleitet aus <strong>FrequencyWords</strong> von Hermit Dave (MIT), auf Basis der OpenSubtitles-Korpora von 2018.",
+    creditTauri: "Gebaut mit <strong>Tauri 2</strong> und Rust.",
+    creditPunto:
+      "Inspiriert von <strong>Punto Switcher</strong>, das einer ganzen Generation zweisprachiger Tippender zeigte, dass dieses Problem lösbar ist.",
+    aboutLicence: "Lizenz und Quellcode",
+    aboutLicenceText: "Lizenziert unter Apache-2.0. Quellcode, Issues und Releases:",
 
     saved: "Gespeichert.",
     ready: "Bereit.",
@@ -400,6 +718,7 @@ const I18N = {
     hotkeyUnchanged: "Kürzel unverändert.",
     hotkeyCleared: "Kürzel gelöscht.",
     selectionHotkeyCleared: "Auswahl-Kürzel gelöscht.",
+    undoHotkeyCleared: "Rückgängig-Kürzel gelöscht.",
     hotkeySet: "Kürzel auf {label} gesetzt.",
     hotkeyRejected: "{label} ist nicht verwendbar. {error}",
     hotkeyTimeout:
@@ -407,6 +726,7 @@ const I18N = {
     hotkeyCheckFailed: "Kürzel konnten nicht geprüft werden: {error}",
     conflictManual: "Manuelles Tastenkürzel",
     conflictSelection: "Auswahl-Kürzel",
+    conflictUndo: "Rückgängig-Kürzel",
     revertedToast: "Zurückgesetzt → {text}",
     willLaunch: "Startet bei der Anmeldung.",
     wontLaunch: "Startet nicht bei der Anmeldung.",
@@ -445,6 +765,9 @@ function applyI18n(root = document) {
   }
   for (const node of root.querySelectorAll("[data-i18n-title]")) {
     node.title = t(node.dataset.i18nTitle);
+  }
+  for (const node of root.querySelectorAll("[data-i18n-placeholder]")) {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
   }
   document.documentElement.lang = LOCALE;
 }

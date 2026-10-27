@@ -41,6 +41,22 @@ pub enum EngineEvent {
         /// The word, as stored: trimmed and lowercased.
         word: String,
     },
+    /// A word was typed, for the **opt-in** typing diary
+    /// ([`crate::Config::diary_enabled`]). Emitted only when the diary is on and
+    /// only from an unblocked context; the app appends it to [`crate::diary`].
+    /// Never emitted otherwise, so the channel carries no typed text when the
+    /// feature is off.
+    Typed {
+        /// Unix seconds the word was finished (or the copy was made).
+        at: u64,
+        /// Executable name of the app it was typed into.
+        app: String,
+        /// The word as it appeared on screen, or the copied text for a clipboard
+        /// capture.
+        word: String,
+        /// `true` when this came from the clipboard rather than the keyboard.
+        clip: bool,
+    },
 }
 
 /// A control message from the UI to the engine.

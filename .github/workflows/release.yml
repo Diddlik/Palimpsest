@@ -46,7 +46,22 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: Palimpsest ${{ github.ref_name }}
           releaseBody: |
-            Windows installer: `Palimpsest_*_x64-setup.exe`.
+            ## What's new
+
+            - Fix administrator mode being lost after an in-app update.
+            - When **Always run as administrator** is enabled, login, manual, and
+              post-update starts now redirect through the existing
+              `HighestAvailable` scheduled task.
+            - The redirect happens before the single-instance lock, preventing a
+              non-elevated updater restart from blocking the administrator process.
+            - Clarify the administrator setting in all four UI languages.
+
+            ## Download
+
+            Download `Palimpsest_0.4.1_x64-setup.exe` below and run it. Existing
+            settings and the administrator scheduled task are preserved.
+
+            ## Installation note
 
             The build is not code-signed yet, so SmartScreen will warn on first
             run — "More info" → "Run anyway".

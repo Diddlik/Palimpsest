@@ -37,13 +37,17 @@ Rust workspace, two crates:
   them into FSTs in `OUT_DIR`, which `scoring.rs` embeds with `include_bytes!`.
   Edit the text files, never the generated FSTs. See "Scoring Data" below.
 - `crates/palimpsest-app` — Tauri 2 tray/settings app: commands, logging, state,
-  capabilities, icons, static UI under `ui/`. User-facing text is localized —
-  see "Localization" below.
+  capabilities, icons, static UI under `ui/`. The settings window is a tab bar
+  over six panes (General, Layouts, Hotkeys, History, Diary, About); a `.pane` is
+  shown by `.active`, and `main.js` keeps exactly one tab and one pane marked.
+  User-facing text is localized — see "Localization" below.
 - `crates/palimpsest-core/examples` — manual Windows spike programs
   (`spike_hook`, `spike_correct`, `spike_context`); interactive, not a substitute
   for tests.
 - `.github/workflows` — `ci.yml` (clippy + tests on push/PR, Windows only) and
   `release.yml` (tag-driven build and publish). See "Releasing" below.
+- `scripts/bump.ps1` — the supported way to cut a release: bumps both manifests
+  and `Cargo.lock` together, commits, tags, pushes. See "Releasing".
 - `plan/` — planning and release notes (`IMPLEMENTATION_PLAN.md`, `PROGRESS.md`,
   `DISTRIBUTION.md`). Local-only, gitignored.
 - `target/`, generated Tauri schemas (`crates/palimpsest-app/gen`), installer
@@ -190,6 +194,40 @@ knows (`scoring::Lang`, driven by the layout pairs and the wordlists); adding a
 UI language does not add a correction language, which needs a wordlist and the
 empirical margin checks described under "Scoring Data".
 
+## Hotkeys
+
+Three bindings, all matched inside the engine from the observed key stream
+(exact modifier match, `0` disables), all defaulting to a Ctrl+Shift chord on an
+adjacent function key — function keys exist on every board, unlike the original
+bare Pause/Scroll Lock:
+
+| Binding                      | Default      | Acts on                          |
+|------------------------------|--------------|----------------------------------|
+| `manual_hotkey`              | Ctrl+Shift+F9  | the word being typed, else the last finished one |
+| `selection_hotkey`           | Ctrl+Shift+F8  | the current selection            |
+| `undo_hotkey`                | Ctrl+Shift+F10 | the last correction              |
+
+Every one of them must `inject::release_modifiers(self.mods)` before injecting.
+The chord is still physically held when the engine reacts, so without it the
+backspaces run as Ctrl+Backspace (eating a whole word) and the retyped text is
+swallowed as shortcuts.
+
+`undo_hotkey` field-defaults to the shipped chord rather than to `0`, so an
+upgrade picks it up; the older two default to `0` because a partial file could
+otherwise resurrect a *bare* typing key. An explicit `0` always means "the user
+cleared it" and is never migrated back.
+
+**The manual hotkey's last-word path works from rendered text, not keys.**
+`Engine::last` holds the word as it currently appears on screen plus its layout,
+and conversion goes through `suggest_text` — the same never-refuses path as the
+selection hotkey, for the same reason (an explicit instruction is not
+second-guessed). Storing keys was the bug: the keys stop describing the text the
+moment anything rewrites it, so a word that had just been auto-corrected, or
+converted by an earlier press of this same hotkey, became unreachable and the
+hotkey silently did nothing. Rendered text is accurate whatever put it there,
+which makes the press repeatable — it converts, and converts straight back. Do
+not "fix" this by reverting to buffered keys or by adding a plausibility veto.
+
 ## Convert Selection
 
 The selection hotkey is the one flow that leaves the keystroke pipeline: it
@@ -236,16 +274,54 @@ desktop is manual and must be flagged as such, not automated away.
 ## Security & Privacy
 
 - Never log typed text, raw word buffers, secrets, or full keystroke streams.
+  This covers `tracing` unconditionally, including the diary below — diary text
+  goes to its own file and the settings window, never to a log line.
 - Preserve the `dwExtraInfo` synthetic-input tagging path — it is what prevents
   correction feedback loops.
 - The word buffer stays short-lived and in memory only.
-- **The one exception is the learned-word dictionary** (`user_dict.rs`,
-  persisted to `%APPDATA%\com.palimpsest.desktop\user_words.json`). Undoing a
-  correction stores that single word so it is not corrected again. It is
-  deliberate, switchable (`Config::learn_on_undo`), listed and individually
-  erasable in Settings → Learned words. Keep all four of those properties: it is
-  the only place typed text survives a restart, so it must stay visible and
-  reversible. Do not extend it to phrases, context, or frequency counts.
+- **Two features deliberately persist typed text.** Nothing else may. Both write
+  to `%APPDATA%\com.palimpsest.desktop\`, in their own file, and both are
+  switchable, listable, and erasable from Settings. Keep every one of those
+  properties on both:
+  - The **learned-word dictionary** (`user_dict.rs`, `user_words.json`). Undoing
+    a correction stores that single word so it is not corrected again.
+    Switchable via `Config::learn_on_undo` (**on** by default), listed and
+    individually erasable in Settings → History → Learned words. Do not extend it
+    to phrases, context, or frequency counts.
+  - The **typing diary** (`diary.rs`, `diary.json`, its own Diary tab). This one
+    is a keystroke log: every word the engine sees, grouped by app, whether or not
+    it was corrected — the Punto Switcher "дневник" (issue #1). It is fenced
+    accordingly, and the fences are the feature:
+    - `Config::diary_enabled` is **off** by default and an upgrade never turns it
+      on; the UI confirms before enabling and carries a plain-language warning.
+    - Nothing reaches it from a blocked context — the engine records only after
+      `blocked()` has cleared the foreground window, so password fields and
+      ignore-listed apps produce no entries. The same gate covers clipboard
+      capture.
+    - `Config::diary_skip_short` (**on** by default) drops closed entries under
+      two words — Punto's guard against logging a lone password. Clipboard entries
+      are exempt. Applied on the app's save path (`state::flush_diary`).
+    - `Config::diary_capture_clipboard` (**off**) also logs copied text, via the
+      engine's idle-tick clipboard watcher (`Engine::on_tick`) — never the hook
+      path. It watches the lock-free sequence counter and resets its baseline
+      after Palimpsest's own selection-conversion writes so it doesn't record
+      them.
+    - Settings → Diary limits retention by entry count, age in days, and the
+      actual `diary.json` size. Oldest entries go first; age and size accept `0`
+      for unlimited. `diary::MAX_ENTRIES` remains the absolute memory ceiling.
+      The tab shows the lot, searches, exports to a text file, and erases in one
+      click.
+    - **Encryption + password** (`crypt.rs`: Argon2id + XChaCha20-Poly1305).
+      Setting a password *is* what enables at-rest encryption — there is no key
+      without one. A password-protected diary loads **locked**: it neither shows
+      nor records until unlocked this session, because there is no key to decrypt
+      or append with. The key is held in memory only while unlocked. A forgotten
+      password is unrecoverable by design — say so, don't add a backdoor. The lock
+      state lives in `state::DiaryState`; the app never writes a
+      protected-but-locked diary (empty in memory, no key).
+
+    Do not add a "just this once" bypass of any of that, and do not let the diary
+    or clipboard capture become a default.
 - Learning is **silent** — no prompt. A dialog would steal focus from the window
   being typed into, which is exactly the wrong thing for an app that injects
   keystrokes. The toast and the Settings list are how the user finds out.
@@ -255,7 +331,15 @@ desktop is manual and must be flagged as such, not automated away.
   add a second one.
 - Config changes apply live (no restart) and persist under `%APPDATA%`.
 - A non-elevated process cannot inject into elevated windows, UAC prompts, the
-  lock screen, or the secure desktop. Do not pretend otherwise in code or docs.
+  lock screen, or the secure desktop — and, by UIPI, its low-level hook does not
+  even *see* keystrokes going to an elevated window, so a hotkey pressed there
+  fires nothing and looks broken. Do not pretend otherwise in code or docs. The
+  opt-in remedy is Settings → General → "Always run as administrator"
+  (`elevate.rs`): a `HighestAvailable` scheduled task starts at logon. Any
+  non-elevated manual or post-update launch redirects through that task before
+  the single-instance lock, so Palimpsest stays elevated across every start. It
+  is off by default, prompts UAC once when enabled (creating the task needs it),
+  and turns off normal Run-key autostart so the two do not race.
 
 ## Commits & Pull Requests
 
@@ -269,15 +353,23 @@ Repository: `github.com/Diddlik/Palimpsest` (public). Licensed Apache-2.0.
 
 ## Releasing
 
-Releases are tag-driven. `release.yml` refuses to build unless the tag matches
-both `Cargo.toml` and `tauri.conf.json`, so bump them together:
+Releases are tag-driven, and `release.yml` refuses to build unless the tag
+matches **both** `Cargo.toml` and `tauri.conf.json`. Use `scripts/bump.ps1`
+rather than editing those by hand — it moves both manifests plus the tracked
+`Cargo.lock`, commits, tags, and pushes as one step, which is the whole point:
+the CI guard otherwise fails *after* the tag is already public.
 
 ```powershell
-# edit version in Cargo.toml + crates/palimpsest-app/tauri.conf.json
-git commit -am "Release v0.3.0"
-git tag v0.3.0
-git push origin main v0.3.0
+./scripts/bump.ps1                 # patch: 0.3.0 -> 0.3.1, tag, push
+./scripts/bump.ps1 -Part minor     # 0.3.0 -> 0.4.0
+./scripts/bump.ps1 -Version 1.0.0  # explicit
+./scripts/bump.ps1 -Part minor -DryRun   # print the plan, change nothing
+./scripts/bump.ps1 -NoPush         # commit + tag locally only
 ```
+
+It refuses to run on a dirty tree or over an existing tag. Keep the CI version
+check as it is — the script makes the common path correct, it does not replace
+the safety net.
 
 The workflow runs the tests, builds the NSIS installer and the signed updater
 artifacts (`createUpdaterArtifacts`), and publishes a GitHub release carrying

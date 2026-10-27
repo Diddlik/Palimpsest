@@ -12,6 +12,12 @@ crossbeam-channel.workspace = true
 fst.workspace = true
 serde = { workspace = true }
 tracing.workspace = true
+# Diary at-rest encryption (crypt.rs): Argon2id password stretching +
+# XChaCha20-Poly1305 AEAD. Pure Rust so the crypto round-trips in headless tests.
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
 
 [build-dependencies]
 fst.workspace = true

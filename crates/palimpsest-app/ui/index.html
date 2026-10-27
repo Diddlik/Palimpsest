@@ -22,142 +22,319 @@
       </label>
     </header>
 
+    <!-- One pane visible at a time. `data-pane` on a tab names the section it
+         reveals; `main.js` keeps exactly one of each marked active. -->
+    <nav class="tabs" id="tabs">
+      <button type="button" class="tab active" data-pane="general" data-i18n="tabGeneral">General</button>
+      <button type="button" class="tab" data-pane="layouts" data-i18n="tabLayouts">Layouts</button>
+      <button type="button" class="tab" data-pane="hotkeys" data-i18n="tabHotkeys">Hotkeys</button>
+      <button type="button" class="tab" data-pane="history" data-i18n="tabHistory">History</button>
+      <button type="button" class="tab" data-pane="diary" data-i18n="tabDiary">Diary</button>
+      <button type="button" class="tab" data-pane="about" data-i18n="tabAbout">About</button>
+    </nav>
+
     <main>
-      <section class="card">
-        <h2 data-i18n="sensitivity">Sensitivity</h2>
-        <p class="hint" data-i18n="sensitivityHint">
-          How sure Palimpsest must be before it corrects. Lower is more
-          cautious (fewer false positives); higher is more eager.
-        </p>
-        <div class="slider-row">
-          <span class="slider-end" data-i18n="cautious">Cautious</span>
-          <input type="range" id="sensitivity" min="0" max="1" step="0.05" />
-          <span class="slider-end" data-i18n="eager">Eager</span>
-          <output id="sensitivity-value">0.50</output>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2 data-i18n="layoutPairs">Layout pairs</h2>
-          <button class="ghost" id="add-pair" type="button" data-i18n="addPair">+ Add pair</button>
-        </div>
-        <p class="hint" data-i18n="layoutPairsHint">
-          Pairs are considered in both directions. Palimpsest reinterprets a
-          word across these layouts and switches to the better one.
-        </p>
-        <div id="pairs"></div>
-      </section>
-
-      <section class="card">
-        <h2 data-i18n="ignoreApps">Ignore in these apps</h2>
-        <p class="hint" data-i18n-html="ignoreAppsHint">
-          Palimpsest stays completely silent in these — terminals, IDEs, games.
-          Pick one from your running apps, or type executable names (one per
-          line, e.g. <code>cmd.exe</code>).
-        </p>
-        <div class="picker-row">
-          <select id="proc-list"></select>
-          <button class="ghost" id="add-proc" type="button" data-i18n="add">Add</button>
-          <button class="ghost" id="refresh-proc" type="button" data-i18n-title="refreshList">↻</button>
-        </div>
-        <textarea id="ignore" rows="4" spellcheck="false"></textarea>
-      </section>
-
-      <section class="card">
-        <h2 data-i18n="language">Language</h2>
-        <p class="hint" data-i18n="languageHint">
-          Language of this window and the tray menu. It does not change which
-          languages Palimpsest corrects — that follows your layout pairs.
-        </p>
-        <select id="ui-language">
-          <!-- Values match `UiLang` in the core; "system" follows Windows. -->
-          <option value="system" data-i18n="systemLanguage">System language</option>
-          <option value="en">English</option>
-          <option value="ru">Русский</option>
-          <option value="uk">Українська</option>
-          <option value="de">Deutsch</option>
-        </select>
-      </section>
-
-      <section class="card">
-        <h2 data-i18n="advanced">Advanced</h2>
-        <div class="field">
-          <label data-i18n="manualHotkey">Manual hotkey</label>
-          <div class="hotkey-row">
-            <span id="hotkey-display" class="hotkey-display">—</span>
-            <button class="ghost" id="set-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
-            <button class="ghost" id="clear-hotkey" type="button" data-i18n="clear">Clear</button>
+      <section class="pane active" data-pane="general">
+        <div class="card">
+          <h2 data-i18n="sensitivity">Sensitivity</h2>
+          <p class="hint" data-i18n="sensitivityHint">
+            How sure Palimpsest must be before it corrects. Lower is more
+            cautious (fewer false positives); higher is more eager.
+          </p>
+          <div class="slider-row">
+            <span class="slider-end" data-i18n="cautious">Cautious</span>
+            <input type="range" id="sensitivity" min="0" max="1" step="0.05" />
+            <span class="slider-end" data-i18n="eager">Eager</span>
+            <output id="sensitivity-value">0.50</output>
           </div>
-          <span class="hint inline" data-i18n="manualHotkeyHint">
-            Click “Set hotkey”, then press a combination. Default Ctrl+Shift+F9.
-            On laptops and 75% keyboards prefer a chord — keys like Pause or
-            Scroll Lock often aren't there. Forces a fix on the current word. Esc
-            cancels.
-          </span>
         </div>
-        <div class="field">
-          <label data-i18n="selectionHotkey">Convert selection hotkey</label>
-          <div class="hotkey-row">
-            <span id="selection-hotkey-display" class="hotkey-display">—</span>
-            <button class="ghost" id="set-selection-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
-            <button class="ghost" id="clear-selection-hotkey" type="button" data-i18n="clear">Clear</button>
+
+        <div class="card">
+          <h2 data-i18n="language">Language</h2>
+          <p class="hint" data-i18n="languageHint">
+            Language of this window and the tray menu. It does not change which
+            languages Palimpsest corrects — that follows your layout pairs.
+          </p>
+          <select id="ui-language">
+            <!-- Values match `UiLang` in the core; "system" follows Windows. -->
+            <option value="system" data-i18n="systemLanguage">System language</option>
+            <option value="en">English</option>
+            <option value="ru">Русский</option>
+            <option value="uk">Українська</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="startupAndLogs">Startup and diagnostics</h2>
+          <label class="check">
+            <input type="checkbox" id="autostart" />
+            <span data-i18n="autostart">Launch Palimpsest at login</span>
+          </label>
+          <label class="check" style="margin-top: 8px">
+            <input type="checkbox" id="elevated-autostart" />
+            <span data-i18n="elevatedAutostart">Always run as administrator</span>
+          </label>
+          <span class="hint inline" data-i18n="elevatedAutostartHint">
+            Needed for the hotkeys to work in windows that run as administrator.
+            Sets up a highest-privilege task and redirects login, manual, and
+            post-update starts through it. Confirm once (UAC).
+          </span>
+          <div class="field" style="margin-top: 12px">
+            <button class="ghost" id="open-logs" type="button" data-i18n="openLogs">Open logs folder</button>
+            <span class="hint inline" data-i18n="logsHint">Diagnostics for bug reports. Never contains what you type.</span>
           </div>
-          <span class="hint inline" data-i18n="selectionHotkeyHint">
-            Select any text, then press this to retype it in the other layout
-            (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+F8; a modifier chord
-            works on every keyboard. Esc cancels.
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="updates">Updates</h2>
+            <button class="ghost" id="check-update" type="button" data-i18n="checkNow">Check now</button>
+          </div>
+          <p class="hint" id="update-status">Checking…</p>
+          <button class="ghost" id="install-update" type="button" hidden data-i18n="installRestart">
+            Install and restart
+          </button>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="layouts">
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="layoutPairs">Layout pairs</h2>
+            <button class="ghost" id="add-pair" type="button" data-i18n="addPair">+ Add pair</button>
+          </div>
+          <p class="hint" data-i18n="layoutPairsHint">
+            Pairs are considered in both directions. Palimpsest reinterprets a
+            word across these layouts and switches to the better one.
+          </p>
+          <div id="pairs"></div>
+        </div>
+
+        <div class="card">
+          <h2 data-i18n="ignoreApps">Ignore in these apps</h2>
+          <p class="hint" data-i18n-html="ignoreAppsHint">
+            Palimpsest stays completely silent in these — terminals, IDEs, games.
+            Pick one from your running apps, or type executable names (one per
+            line, e.g. <code>cmd.exe</code>).
+          </p>
+          <div class="picker-row">
+            <select id="proc-list"></select>
+            <button class="ghost" id="add-proc" type="button" data-i18n="add">Add</button>
+            <button class="ghost" id="refresh-proc" type="button" data-i18n-title="refreshList">↻</button>
+          </div>
+          <textarea id="ignore" rows="4" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="hotkeys">
+        <div class="card">
+          <div class="field">
+            <label data-i18n="manualHotkey">Manual hotkey</label>
+            <div class="hotkey-row">
+              <span id="hotkey-display" class="hotkey-display">—</span>
+              <button class="ghost" id="set-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
+              <button class="ghost" id="clear-hotkey" type="button" data-i18n="clear">Clear</button>
+            </div>
+            <span class="hint inline" data-i18n="manualHotkeyHint">
+              Click “Set hotkey”, then press a combination. Default Ctrl+Shift+F9.
+              On laptops and 75% keyboards prefer a chord — keys like Pause or
+              Scroll Lock often aren't there. Converts the word you are typing,
+              or the one just behind the caret. Esc cancels.
+            </span>
+          </div>
+          <div class="field">
+            <label data-i18n="selectionHotkey">Convert selection hotkey</label>
+            <div class="hotkey-row">
+              <span id="selection-hotkey-display" class="hotkey-display">—</span>
+              <button class="ghost" id="set-selection-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
+              <button class="ghost" id="clear-selection-hotkey" type="button" data-i18n="clear">Clear</button>
+            </div>
+            <span class="hint inline" data-i18n="selectionHotkeyHint">
+              Select any text, then press this to retype it in the other layout
+              (e.g. “ghbdtn” → “привет”). Default Ctrl+Shift+F8; a modifier chord
+              works on every keyboard. Esc cancels.
+            </span>
+          </div>
+          <div class="field">
+            <label data-i18n="undoHotkey">Undo hotkey</label>
+            <div class="hotkey-row">
+              <span id="undo-hotkey-display" class="hotkey-display">—</span>
+              <button class="ghost" id="set-undo-hotkey" type="button" data-i18n="setHotkey">Set hotkey</button>
+              <button class="ghost" id="clear-undo-hotkey" type="button" data-i18n="clear">Clear</button>
+            </div>
+            <span class="hint inline" data-i18n="undoHotkeyHint">
+              Reverts the last correction without leaving what you are typing —
+              the same as “Undo last” below. Default Ctrl+Shift+F10. Esc cancels.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="history">
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="recentCorrections">Recent corrections</h2>
+            <button class="ghost" id="undo" type="button" data-i18n="undoLast">Undo last</button>
+          </div>
+          <ul id="history" class="history">
+            <li class="empty" data-i18n="nothingYet">Nothing yet.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="learnedWords">Learned words</h2>
+            <button class="ghost" id="clear-words" type="button" data-i18n="forgetAll">Forget all</button>
+          </div>
+          <label class="check">
+            <input type="checkbox" id="learn-on-undo" />
+            <span data-i18n="learnOnUndo">Learn a word when I undo its correction</span>
+          </label>
+          <span class="hint" data-i18n-html="learnedWordsHint">
+            Undoing a correction tells Palimpsest the word was right as typed, so
+            it stops correcting it. Stored locally in <code>user_words.json</code>,
+            never sent anywhere. Turn the setting off to save nothing at all.
           </span>
-        </div>
-        <label class="check">
-          <input type="checkbox" id="autostart" />
-          <span data-i18n="autostart">Launch Palimpsest at login</span>
-        </label>
-        <div class="field" style="margin-top: 12px">
-          <button class="ghost" id="open-logs" type="button" data-i18n="openLogs">Open logs folder</button>
-          <span class="hint inline" data-i18n="logsHint">Diagnostics for bug reports. Never contains what you type.</span>
+          <ul id="words" class="history">
+            <li class="empty" data-i18n="nothingLearned">Nothing learned yet.</li>
+          </ul>
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2 data-i18n="updates">Updates</h2>
-          <button class="ghost" id="check-update" type="button" data-i18n="checkNow">Check now</button>
+      <section class="pane" data-pane="diary">
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="diary">Typing diary</h2>
+            <label class="check inline">
+              <input type="checkbox" id="diary-enabled" />
+              <span data-i18n="diaryEnabled">Record</span>
+            </label>
+          </div>
+          <p class="warn" data-i18n-html="diaryWarning">
+            <strong>This is a keystroke log.</strong> With it on, every word you
+            type is written to disk on this machine — not just corrections. Anyone
+            with access to your user profile can read it unless you protect it with
+            a password below. Nothing is recorded in password fields or ignored
+            apps, nothing is ever sent anywhere, and it is off unless you switch it
+            on here.
+          </p>
+
+          <div class="diary-options">
+            <label class="check">
+              <input type="checkbox" id="diary-clipboard" />
+              <span data-i18n="diaryClipboard">Also record clipboard (copied text)</span>
+            </label>
+            <label class="check">
+              <input type="checkbox" id="diary-skip-short" />
+              <span data-i18n="diarySkipShort">Skip entries shorter than two words</span>
+            </label>
+          </div>
+          <div class="diary-limits">
+            <label>
+              <span data-i18n="diaryMaxEntries">Maximum entries</span>
+              <input type="number" id="diary-max-entries" min="1" max="10000" step="1" />
+            </label>
+            <label>
+              <span data-i18n="diaryRetentionDays">Keep for days</span>
+              <input type="number" id="diary-retention-days" min="0" max="36500" step="1" />
+            </label>
+            <label>
+              <span data-i18n="diaryMaxSizeMb">Maximum file size (MiB)</span>
+              <input type="number" id="diary-max-size-mb" min="0" max="1024" step="1" />
+            </label>
+          </div>
+          <p class="hint" data-i18n="diaryLimitsHint">
+            Oldest entries are removed first. Set days or file size to 0 for no limit.
+          </p>
         </div>
-        <p class="hint" id="update-status">Checking…</p>
-        <button class="ghost" id="install-update" type="button" hidden data-i18n="installRestart">
-          Install and restart
-        </button>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="diaryProtection">Password</h2>
+            <span id="diary-protection-state" class="tag"></span>
+          </div>
+          <p class="hint" data-i18n="diaryProtectionHint">
+            A password encrypts the diary on disk so it can't be read without it.
+            You'll need it to view the diary each time you open Palimpsest. It
+            cannot be recovered — if you forget it, the diary is lost for good.
+          </p>
+          <div class="diary-pw-row" id="diary-set-pw-row">
+            <input type="password" id="diary-pw" data-i18n-placeholder="diaryPwPlaceholder" placeholder="New password" autocomplete="new-password" />
+            <input type="password" id="diary-pw2" data-i18n-placeholder="diaryPw2Placeholder" placeholder="Repeat password" autocomplete="new-password" />
+            <button class="ghost" id="diary-set-pw" type="button" data-i18n="diarySetPw">Set password</button>
+          </div>
+          <button class="ghost" id="diary-clear-pw" type="button" hidden data-i18n="diaryClearPw">Remove password</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2 data-i18n="diaryEntries">Entries</h2>
+            <div class="diary-actions">
+              <button class="ghost" id="diary-export" type="button" data-i18n="diaryExport">Export…</button>
+              <button class="ghost" id="clear-diary" type="button" data-i18n="clearDiary">Erase diary</button>
+            </div>
+          </div>
+
+          <!-- Unlock prompt, shown only when the diary is password-protected and
+               still locked this session. -->
+          <div id="diary-locked" class="diary-unlock" hidden>
+            <p class="hint" data-i18n="diaryLockedHint">
+              The diary is locked. Enter your password to view it and resume
+              recording.
+            </p>
+            <div class="diary-pw-row">
+              <input type="password" id="diary-unlock-pw" data-i18n-placeholder="diaryPwPlaceholder" placeholder="Password" autocomplete="current-password" />
+              <button class="ghost" id="diary-unlock" type="button" data-i18n="diaryUnlock">Unlock</button>
+            </div>
+          </div>
+
+          <!-- The list and its search, shown when the diary is readable. -->
+          <div id="diary-open" hidden>
+            <input type="search" id="diary-search" data-i18n-placeholder="diarySearch" placeholder="Search…" spellcheck="false" />
+            <ul id="diary" class="history diary">
+              <li class="empty" data-i18n="diaryOff">The diary is off. Nothing is being recorded.</li>
+            </ul>
+          </div>
+        </div>
       </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2 data-i18n="recentCorrections">Recent corrections</h2>
-          <button class="ghost" id="undo" type="button" data-i18n="undoLast">Undo last</button>
+      <section class="pane" data-pane="about">
+        <div class="card">
+          <h2>Palimpsest</h2>
+          <p class="hint" id="about-version">—</p>
+          <p class="hint" data-i18n="aboutWhat">
+            Palimpsest watches for a word typed in the wrong keyboard layout,
+            erases it, switches the layout, and retypes what you meant. Everything
+            happens on this machine.
+          </p>
         </div>
-        <ul id="history" class="history">
-          <li class="empty" data-i18n="nothingYet">Nothing yet.</li>
-        </ul>
-      </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2 data-i18n="learnedWords">Learned words</h2>
-          <button class="ghost" id="clear-words" type="button" data-i18n="forgetAll">Forget all</button>
+        <div class="card">
+          <h2 data-i18n="aboutCredits">Credits</h2>
+          <ul class="credits">
+            <li data-i18n-html="creditWordlists">
+              Word lists derived from
+              <strong>FrequencyWords</strong> by Hermit Dave (MIT), built from
+              2018 OpenSubtitles corpora.
+            </li>
+            <li data-i18n-html="creditTauri">
+              Built with <strong>Tauri 2</strong> and Rust.
+            </li>
+            <li data-i18n-html="creditPunto">
+              Inspired by <strong>Punto Switcher</strong>, which taught a
+              generation of bilingual typists that this problem was solvable.
+            </li>
+          </ul>
         </div>
-        <label class="check">
-          <input type="checkbox" id="learn-on-undo" />
-          <span data-i18n="learnOnUndo">Learn a word when I undo its correction</span>
-        </label>
-        <span class="hint" data-i18n-html="learnedWordsHint">
-          Undoing a correction tells Palimpsest the word was right as typed, so
-          it stops correcting it. These words are the only thing Palimpsest saves
-          from what you type — stored locally in <code>user_words.json</code>,
-          never sent anywhere. Turn the setting off to save nothing at all.
-        </span>
-        <ul id="words" class="history">
-          <li class="empty" data-i18n="nothingLearned">Nothing learned yet.</li>
-        </ul>
+
+        <div class="card">
+          <h2 data-i18n="aboutLicence">Licence and source</h2>
+          <p class="hint" data-i18n="aboutLicenceText">
+            Licensed under Apache-2.0. Source, issues, and releases:
+          </p>
+          <p class="about-link">github.com/Diddlik/Palimpsest</p>
+        </div>
       </section>
     </main>
 
