@@ -373,7 +373,14 @@ the safety net.
 
 The workflow runs the tests, builds the NSIS installer and the signed updater
 artifacts (`createUpdaterArtifacts`), and publishes a GitHub release carrying
-`latest.json`.
+`latest.json`. The release body in `release.yml` is generic on purpose; write
+the "What's new" notes afterwards with `gh release edit v<version> --notes …`
+instead of hardcoding them in the workflow, where they go stale.
+
+`docs/how-it-works.svg` (README infographic) is hand-written SVG.
+`docs/screenshots/{en,ru}/` are rendered from `ui/` in headless Edge with
+`window.__TAURI__` mocked by sample data; reshoot them when the settings UI
+changes visibly.
 
 The in-app updater (`commands::check_update` / `install_update`, Settings →
 Updates) polls `releases/latest/download/latest.json` and verifies the package
