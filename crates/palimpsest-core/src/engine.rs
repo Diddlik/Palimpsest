@@ -64,6 +64,14 @@ fn modifier_bit(vk: u32) -> Option<u8> {
     }
 }
 
+/// Whether the held modifiers turn a key into a shortcut rather than typing.
+/// Ctrl+Alt together is AltGr (`@`, `€`, … on German layouts), which types.
+fn is_shortcut(mods: u8) -> bool {
+    use crate::config::{MOD_ALT, MOD_CONTROL, MOD_WIN};
+    let ctrl_alt = MOD_CONTROL | MOD_ALT;
+    mods & MOD_WIN != 0 || (mods & ctrl_alt != 0 && mods & ctrl_alt != ctrl_alt)
+}
+
 /// The chord-match rule, factored out so it is testable without a live engine:
 /// the main key and the held modifiers must match exactly. A `manual_hotkey` of
 /// `0` is disabled; the exact modifier match means a chord never fires on a
@@ -268,6 +276,14 @@ impl Engine {
             inject::release_modifiers(self.mods);
             self.on_undo();
             return; // the hotkey itself is not part of any word
+        }
+        if is_shortcut(self.mods) {
+            // Ctrl+V, Ctrl+Z, Alt+… change the text behind our back (a paste
+            // puts unseen text after the buffered word), so the word is no
+            // longer something we can safely correct.
+            self.buffer.clear();
+            self.last = None;
+            return;
         }
         if let Some(done) = self.buffer.push(key) {
             self.on_word(done, &config);
@@ -705,6 +721,16 @@ mod tests {
 
         let off = Config { selection_hotkey: 0, ..Config::default() };
         assert!(!selection_hotkey_matches(0, 0, &off));
+    }
+
+    #[test]
+    fn ctrl_or_alt_alone_is_a_shortcut_but_altgr_types() {
+        assert!(is_shortcut(MOD_CONTROL)); // Ctrl+V
+        assert!(is_shortcut(MOD_CONTROL | MOD_SHIFT));
+        assert!(is_shortcut(crate::config::MOD_ALT));
+        assert!(!is_shortcut(MOD_CONTROL | crate::config::MOD_ALT)); // AltGr
+        assert!(!is_shortcut(MOD_SHIFT));
+        assert!(!is_shortcut(0));
     }
 
     #[test]
