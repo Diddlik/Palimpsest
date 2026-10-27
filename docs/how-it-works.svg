@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="Segoe UI, system-ui, -apple-system, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1b1d21"/>
+      <stop offset="1" stop-color="#14262a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#20827e"/>
+      <stop offset="1" stop-color="#2bb3ad"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2bb3ad"/>
+    </marker>
+    <style>
+      .h { fill: #f2f4f5; font-weight: 700; }
+      .t { fill: #e6e8ea; }
+      .m { fill: #9aa3ab; }
+      .a { fill: #2bb3ad; }
+      .card { fill: #23262b; stroke: #34393f; stroke-width: 1.5; }
+      .mono { font-family: Consolas, "Cascadia Mono", Menlo, monospace; }
+      .flow { stroke: #2bb3ad; stroke-width: 3; fill: none; stroke-dasharray: 2 8; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="560" rx="24" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <rect x="48" y="40" width="56" height="56" rx="14" fill="url(#accent)"/>
+  <text x="76" y="80" text-anchor="middle" font-size="32" font-weight="700" fill="#fff">P</text>
+  <text x="124" y="66" font-size="30" class="h">Palimpsest</text>
+  <text x="124" y="92" font-size="17" class="m">Typed in the wrong layout? Fixed before you notice.</text>
+
+  <!-- Step 1: typed -->
+  <rect x="48" y="140" width="250" height="210" rx="18" class="card"/>
+  <text x="72" y="178" font-size="14" class="a" font-weight="700" letter-spacing="1.5">1 · YOU TYPE</text>
+  <text x="72" y="208" font-size="14" class="m">Layout still on English</text>
+  <rect x="72" y="232" width="202" height="62" rx="10" fill="#1b1d21"/>
+  <text x="173" y="273" text-anchor="middle" font-size="30" class="t mono">ghbdtn<tspan class="a">␣</tspan></text>
+  <text x="72" y="326" font-size="14" class="m">…but you meant Russian.</text>
+
+  <path d="M306,245 L350,245" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: analyse -->
+  <rect x="358" y="140" width="250" height="210" rx="18" class="card"/>
+  <text x="382" y="178" font-size="14" class="a" font-weight="700" letter-spacing="1.5">2 · IT READS THE KEYS</text>
+  <text x="382" y="208" font-size="14" class="m">Same keys, every layout:</text>
+  <text x="382" y="244" font-size="18" class="t mono">EN  ghbdtn</text>
+  <rect x="505" y="232" width="79" height="8" rx="4" fill="#34393f"/>
+  <rect x="505" y="232" width="12" height="8" rx="4" fill="#9aa3ab"/>
+  <text x="382" y="284" font-size="18" class="t mono">RU  привет</text>
+  <rect x="505" y="272" width="79" height="8" rx="4" fill="#34393f"/>
+  <rect x="505" y="272" width="74" height="8" rx="4" fill="url(#accent)"/>
+  <text x="382" y="326" font-size="14" class="m">Language model scores both.</text>
+
+  <path d="M616,245 L660,245" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: correct -->
+  <rect x="668" y="140" width="250" height="210" rx="18" class="card"/>
+  <text x="692" y="178" font-size="14" class="a" font-weight="700" letter-spacing="1.5">3 · IT RETYPES</text>
+  <text x="692" y="216" font-size="16" class="t">⌫ ×7  erase the word</text>
+  <text x="692" y="252" font-size="16" class="t">⇄ EN → RU  switch layout</text>
+  <text x="692" y="288" font-size="16" class="t">⌨ type the right text</text>
+  <text x="692" y="326" font-size="14" class="m">One atomic injection.</text>
+
+  <path d="M926,245 L970,245" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: result -->
+  <rect x="978" y="140" width="174" height="210" rx="18" fill="url(#accent)"/>
+  <text x="1002" y="178" font-size="14" fill="#e9fffd" font-weight="700" letter-spacing="1.5">4 · DONE</text>
+  <text x="1065" y="262" text-anchor="middle" font-size="34" font-weight="700" fill="#fff">привет</text>
+  <text x="1002" y="326" font-size="14" fill="#e9fffd">Keep typing.</text>
+
+  <!-- Bottom strip: hotkeys + facts -->
+  <rect x="48" y="384" width="660" height="128" rx="18" class="card"/>
+  <text x="72" y="420" font-size="14" class="a" font-weight="700" letter-spacing="1.5">HOTKEYS</text>
+  <g font-size="15">
+    <rect x="72" y="438" width="148" height="34" rx="8" fill="#1b1d21" stroke="#34393f"/>
+    <text x="146" y="461" text-anchor="middle" class="t mono">Ctrl+Shift+F9</text>
+    <text x="72" y="494" class="m">convert last word</text>
+    <rect x="290" y="438" width="148" height="34" rx="8" fill="#1b1d21" stroke="#34393f"/>
+    <text x="364" y="461" text-anchor="middle" class="t mono">Ctrl+Shift+F8</text>
+    <text x="290" y="494" class="m">convert selection</text>
+    <rect x="508" y="438" width="158" height="34" rx="8" fill="#1b1d21" stroke="#34393f"/>
+    <text x="587" y="461" text-anchor="middle" class="t mono">Ctrl+Shift+F10</text>
+    <text x="508" y="494" class="m">undo correction</text>
+  </g>
+
+  <rect x="732" y="384" width="420" height="128" rx="18" class="card"/>
+  <text x="756" y="420" font-size="14" class="a" font-weight="700" letter-spacing="1.5">BUILT TO STAY OUT OF THE WAY</text>
+  <g font-size="15" class="t">
+    <text x="756" y="452"><tspan class="a">●</tspan> 100% local, no telemetry</text>
+    <text x="756" y="480"><tspan class="a">●</tspan> EN · RU · DE · UK interface</text>
+    <text x="960" y="452"><tspan class="a">●</tspan> Rust, low-latency hook</text>
+    <text x="960" y="480"><tspan class="a">●</tspan> Learns from undo</text>
+  </g>
+  <text x="756" y="502" font-size="13" class="m">Stays silent in password fields and apps you ignore.</text>
+</svg>

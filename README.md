@@ -2,203 +2,111 @@
 
 # Palimpsest
 
-Palimpsest is a Windows-first typing assistant for people who often switch
-between keyboard layouts. Its goal is to detect when a word was typed using the
-wrong layout, remove the incorrect characters, switch the operating-system
-layout, and retype the intended text.
+**Typed in the wrong keyboard layout? Palimpsest fixes it before you notice.**
 
-The idea is similar to tools such as Punto Switcher, Mahou, and Caramba
-Switcher, but this project is built as a local, Rust-based utility with a strong
-focus on low-latency keyboard handling, privacy, and predictable correction
-behavior.
-<img width="1164" height="1383" alt="image" src="https://github.com/user-attachments/assets/3b03aff8-de1e-4027-a0a9-8a1531de736b" />
+Type `ghbdtn` with the English layout active and Palimpsest turns it into
+`привет`, switches Windows to Russian, and lets you keep typing. It works like
+Punto Switcher, Mahou, or Caramba Switcher, but runs fully local, is written in
+Rust, and corrects only when it is confident.
 
-> Development status: feature-complete preview, pending interactive
-> verification and a signed release. The full pipeline is implemented — hook,
-> reinterpretation, scoring, automatic correction, context awareness, the Tauri
-> tray/settings UI, and an NSIS installer. What remains is human-gated:
-> hands-on testing on a real desktop, code signing, and soak/performance runs.
+![How Palimpsest works](docs/how-it-works.svg)
 
-## What Palimpsest does
+## Install
 
-Palimpsest watches typed keystrokes locally and tries to recognize wrong-layout
-words. For example, if the user intended to type Russian but the English layout
-was active, the word `ghbdtn` can be interpreted as `привет`.
+Download `Palimpsest_<version>_x64-setup.exe` from the
+[latest release](https://github.com/Diddlik/Palimpsest/releases/latest) and run
+it. It installs per user, needs no admin rights, and updates itself from
+Settings → General → Updates.
 
-The intended correction flow is:
+The installer is not code-signed yet, so SmartScreen may warn on first run
+(**More info → Run anyway**).
 
-1. Observe physical key presses through a Windows low-level keyboard hook.
-2. Buffer one word at a time until a boundary such as space, enter, tab, or
-   punctuation.
-3. Reinterpret the buffered scan codes under configured keyboard layouts.
-4. Score the possible interpretations with language heuristics.
-5. If the alternate layout is clearly better, send backspaces, switch the OS
-   layout, and retype the corrected text.
+## Features
 
-Palimpsest is designed for alphabetic layout pairs first, especially EN/RU and
-later EN/DE. Complex IME scenarios are out of scope for the first version.
+- **Automatic correction** while you type, for EN ⇄ RU, EN ⇄ DE, DE ⇄ RU, and
+  any other alphabetic layout pair you configure.
+- **Three hotkeys**: convert the last word, convert the selection, undo.
+- **Conservative by design**: a sensitivity slider, an ignore list for
+  terminals, IDEs and games, and silence in password fields.
+- **Learns from undo**: undo a correction once and that word is left alone.
+- **Typing diary** (optional, off by default): a searchable, exportable log of
+  what you typed, with optional clipboard capture and password encryption.
+- **Interface in English, Russian, Ukrainian, and German**, following the
+  Windows language by default.
+- **Tray app**: left-click pauses, right-click opens the menu. Settings apply
+  live.
 
-## Why it exists
+## Screenshots
 
-Typing several languages on Windows is easy to interrupt: one forgotten layout
-switch can turn a whole word into unreadable text. Palimpsest aims to fix that
-without sending text to a server, without storing typed content, and without
-blocking normal keyboard input.
+| History | Layouts |
+|---|---|
+| ![Correction history and learned words](docs/screenshots/en/history.png) | ![Layout pairs and ignored apps](docs/screenshots/en/layouts.png) |
+| **Hotkeys** | **Diary** |
+| ![Hotkey settings](docs/screenshots/en/hotkeys.png) | ![Typing diary entries](docs/screenshots/en/diary.png) |
 
-The project favors conservative corrections. A missed correction is acceptable;
-a false correction is much more disruptive. The planned UI therefore includes a
-sensitivity setting, ignore lists, pause controls, and an undo action.
+## Hotkeys
+
+| Default | Action |
+|---|---|
+| `Ctrl+Shift+F9` | Convert the word you are typing, or the one just behind the caret |
+| `Ctrl+Shift+F8` | Convert the selected text |
+| `Ctrl+Shift+F10` | Undo the last correction |
+
+All three can be changed or turned off in Settings → Hotkeys.
+
+## Privacy
+
+- Typed text never leaves your machine, under any setting.
+- The only network request is the update check. It sends no identifiers, and
+  updates are verified against a signing key built into the app.
+- Diagnostic logs never contain typed text at the default level.
+
+Only two features write typed text to disk, both under
+`%APPDATA%\com.palimpsest.desktop\`, and both can be viewed and erased in
+Settings:
+
+- **Learned words** (`user_words.json`, on by default): one word per undo,
+  nothing else.
+- **Typing diary** (`diary.json`, off by default): a real keystroke log. Anyone
+  with access to your user profile can read it unless you set a diary password,
+  which encrypts it (Argon2id + XChaCha20-Poly1305). A forgotten password cannot
+  be recovered. Retention is limited by entry count (500 by default), age, and
+  file size.
+
+### Administrator windows
+
+Windows does not let a normal process type into elevated windows, UAC prompts,
+or the lock screen. Turn on **Always run as administrator** in Settings →
+General if you need corrections in admin apps. It uses one UAC-approved
+scheduled task and stays elevated across logins and updates.
 
 ## How it works
 
-Palimpsest is organized around a strict latency rule: the Windows keyboard hook
-must do almost no work. If a hook callback is slow, Windows can silently remove
-it. For that reason, the architecture splits responsibilities into separate
-threads:
+Palimpsest runs three threads:
 
-- Hook thread: owns `WH_KEYBOARD_LL`, reads only the virtual key, scan code,
-  flags, and timestamp, forwards a tiny event over a bounded channel, then calls
-  the next hook.
-- Engine thread: owns word buffering, layout reinterpretation, scoring,
-  correction decisions, active-window context, and input execution.
-- UI thread: Tauri 2 application with tray icon, settings window, configuration
-  commands, and live status events.
+- **Hook thread** owns `WH_KEYBOARD_LL`. It reads the key, forwards a tiny event,
+  and returns at once, because Windows silently removes slow hooks.
+- **Engine thread** collects a word until a space, reinterprets the scan codes
+  under each configured layout with `ToUnicodeEx`, and scores every reading with
+  per-language bigram models. If another layout clearly wins, it sends the
+  backspaces, the layout switch, and the corrected text as one injection.
+- **UI thread** is a Tauri 2 tray app with the settings window.
 
-Synthetic input is tagged with a `dwExtraInfo` signature so Palimpsest can ignore
-the keystrokes it generated itself. This prevents correction feedback loops.
+Its own input is tagged through `dwExtraInfo`, so Palimpsest never corrects what
+it typed itself. Shortcuts such as `Ctrl+V` drop the current word, so pasted
+text is never touched.
 
-## Current status
+## Build from source
 
-Implemented:
-
-- Cargo workspace with `palimpsest-core` (engine) and `palimpsest-app` (Tauri).
-- Windows low-level keyboard hook with `dwExtraInfo` tagging to ignore
-  Palimpsest's own injected input (no feedback loop).
-- Three-thread runtime (hook / engine / UI) with clean start and stop, plus a
-  global on/off switch.
-- Word buffer with boundary and backspace handling.
-- Scan-code reinterpretation through `ToUnicodeEx` across configured layouts.
-- Per-language bigram scoring (EN, RU, DE) with a cross-alphabet floor and
-  sensitivity-driven guardrails.
-- Automatic correction during typing (backspace → layout switch → Unicode
-  retype, as one atomic injection).
-- Three hotkeys, all defaulting to a Ctrl+Shift chord: convert the word being
-  typed or the one just behind the caret (F9), convert the current selection
-  (F8), and undo the last correction without leaving what you are typing (F10).
-- Active-window context: ignore-list (terminals/IDEs/games) and best-effort
-  native password-field detection.
-- Tauri 2 tray + settings UI, arranged as tabs — General, Layouts, Hotkeys,
-  History, About — covering enable/pause, sensitivity, layout pairs,
-  ignore-list, autostart, hotkeys, live correction history, and undo.
-- An optional typing diary, off by default: keystroke (and optional clipboard)
-  logging, grouped by day, searchable and exportable, and encryptable behind a
-  password (see Privacy below).
-- A fully localized interface — English, Russian, Ukrainian, and German — which
-  follows the Windows UI language by default and can be pinned in Settings.
-- Serializable configuration persisted to `%APPDATA%`, applied live (no restart).
-- File diagnostics logging (never containing typed text at the default level),
-  a crash/panic hook, and an NSIS per-user installer.
-- Signed in-app updates (Settings → Updates) fed by a tag-driven GitHub Actions
-  release build.
-
-Remaining before a public release (human-gated):
-
-- Interactive verification on a real desktop session.
-- Code signing with an OV/EV certificate and AV allow-listing.
-- Multi-day soak testing and hot-path performance profiling.
-
-## Privacy and safety model
-
-Palimpsest is local-only:
-
-- No typed text is sent to a network service — ever, under any setting.
-- The word buffer is short-lived and in memory only.
-- Diagnostics never log typed content at the default level.
-- The only network request is the update check: a plain fetch of the release
-  feed, with no identifiers and no telemetry. Update packages are verified
-  against a signing key built into the app, so a compromised download host
-  cannot ship code.
-
-Two features write typed text to disk. Nothing else does, both live under
-`%APPDATA%\com.palimpsest.desktop\` in their own file, and both can be listed and
-erased from Settings → History:
-
-- **Learned words** (`user_words.json`) — **on** by default. Undoing a correction
-  tells Palimpsest that word was right as typed, and the only way to stop
-  correcting it tomorrow is to write it down. One word per undo, nothing else.
-- **Typing diary** (`diary.json`, its own tab) — **off** by default, and an
-  upgrade never turns it on. This one is a keystroke log, like Punto Switcher's
-  «дневник»: switch it on and every word you type is recorded, grouped by app and
-  by day, searchable, and exportable — not just the corrections. It can also
-  record clipboard text (a separate opt-in). It is genuinely useful for
-  recovering text a crashed app ate, but be blunt about the trade: anyone who can
-  read your user profile can read it — **unless you set a diary password**, which
-  encrypts the file (Argon2id + XChaCha20-Poly1305). A protected diary loads
-  locked and neither shows nor records until you unlock it, and a forgotten
-  password is unrecoverable. Nothing is recorded in password fields or ignored
-  apps, entries under two words are skipped by default, and one click erases it.
-  Retention can be limited by entry count, age, and file size; 500 entries is
-  the default.
-
-Because Palimpsest uses a global keyboard hook and synthesizes input, antivirus
-and SmartScreen warnings are a real distribution concern. A credible release
-will need code signing, transparent behavior, no obfuscation, and clear
-documentation.
-
-Windows integrity boundaries still apply. A non-elevated Palimpsest process
-cannot reliably inject input into elevated administrator windows, UAC prompts,
-the lock screen, or the secure desktop. The opt-in **Always run as
-administrator** setting uses one UAC-approved scheduled task and preserves
-elevation across login, manual starts, and updater restarts.
-
-## User interface
-
-The desktop app is a Tauri 2 tray utility:
-
-- Tray icon with on/paused state; left-click toggles, right-click opens the menu
-  (Enabled, Settings, Open logs folder, Quit).
-- Settings window organized as six tabs — **General** (sensitivity, language,
-  autostart, logs, updates), **Layouts** (layout pairs, ignore-list),
-  **Hotkeys**, **History** (corrections, learned words), **Diary** (the optional
-  typing diary), and **About** — with changes applying live, no restart.
-- Correction history and an undo-last-correction action, on a hotkey too.
-- Live status and correction events streamed from the engine.
-
-It is a single instance (only one hook is ever installed) and lives in the tray;
-closing the settings window hides it rather than quitting.
-
-### Interface language
-
-The settings window and the tray menu are available in English, Russian,
-Ukrainian, and German. The default, **System language**, follows the Windows UI
-language and falls back to English for anything else; Settings → Language pins a
-specific one. This is presentation only — it does not change which languages
-Palimpsest *corrects*, which follows the configured layout pairs.
-
-## Build and development
-
-Requirements:
-
-- Windows.
-- Rust stable toolchain for `x86_64-pc-windows-msvc`.
-- Tauri CLI (`cargo install tauri-cli --version "^2"`) — only for building the
-  installer; plain `cargo run` works without it.
-
-Build the workspace and run checks:
+Requires Windows and the Rust stable toolchain (`x86_64-pc-windows-msvc`).
 
 ```powershell
-cargo build --workspace --examples
 cargo test --workspace
 cargo clippy --workspace --examples
+cargo run -p palimpsest-app            # tray + settings
 ```
 
-Run the app (tray + settings):
-
-```powershell
-cargo run -p palimpsest-app
-```
-
-Build the installer (NSIS, per-user):
+Installer (needs `cargo install tauri-cli --version "^2"`):
 
 ```powershell
 cd crates/palimpsest-app
@@ -206,44 +114,23 @@ cargo tauri build
 # → target/release/bundle/nsis/Palimpsest_<version>_x64-setup.exe
 ```
 
-Releases are built by GitHub Actions from a tag, and the workflow refuses a tag
-that disagrees with either manifest. `scripts/bump.ps1` moves `Cargo.toml`,
-`crates/palimpsest-app/tauri.conf.json`, and `Cargo.lock` together, then commits,
-tags, and pushes:
+### Releasing
+
+Releases are built by GitHub Actions from a `v*` tag. `scripts/bump.ps1` updates
+`Cargo.toml`, `tauri.conf.json`, and `Cargo.lock` together, then commits, tags,
+and pushes:
 
 ```powershell
-./scripts/bump.ps1                 # patch: 0.3.0 -> 0.3.1, tag, push
-./scripts/bump.ps1 -Part minor     # 0.3.0 -> 0.4.0
+./scripts/bump.ps1                 # patch: 0.4.1 -> 0.4.2
+./scripts/bump.ps1 -Part minor     # 0.4.2 -> 0.5.0
 ./scripts/bump.ps1 -Version 1.0.0  # explicit
-./scripts/bump.ps1 -DryRun         # print the plan, change nothing
+./scripts/bump.ps1 -DryRun         # show the plan, change nothing
 ```
 
-That publishes the installer and the signed `latest.json` feed the in-app updater
-reads.
+## Status
 
-Interactive spikes for the core, run manually from a local Windows session
-(they observe or inject into the focused window):
-
-```powershell
-cargo run -p palimpsest-core --example spike_hook
-cargo run -p palimpsest-core --example spike_correct  # ghbdtn -> привет in Notepad
-cargo run -p palimpsest-core --example spike_context
-```
-
-See `plan/DISTRIBUTION.md` for signing, antivirus, logs, and the release
-checklist, and `plan/PROGRESS.md` for detailed status.
-
-## Roadmap
-
-1. ✅ Core hook, injection, runtime plumbing, and the global on/off switch.
-2. ✅ Headless word analysis: `ToUnicodeEx` reinterpretation, bigram scoring,
-   and guardrails with EN/RU/DE test coverage.
-3. ✅ The Palimpsest correction effect: backspace, layout switch, Unicode retype,
-   plus a manual hotkey and undo.
-4. ✅ Active-window context: ignore lists and best-effort password-field detection.
-5. ✅ The Tauri tray/settings UI, localized into EN/RU/UK/DE.
-6. ✅ Release hardening code: file logging, crash capture, and an NSIS installer.
-7. ⏳ Remaining: interactive verification, code signing, and soak/performance runs.
+Every feature above is implemented and ships in the releases. Still open:
+code signing with an OV/EV certificate, and long soak and performance testing.
 
 ## License
 
