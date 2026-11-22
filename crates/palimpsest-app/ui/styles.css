@@ -152,8 +152,35 @@ textarea { width: 100%; resize: vertical; }
 input[type="number"] { width: 90px; }
 
 /* Process picker */
+.process-filter { color: var(--muted); font-size: 12px; }
+.process-filter input { width: 100%; }
 .picker-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .picker-row select { flex: 1 1 140px; min-width: 0; }
+
+@supports (appearance: base-select) {
+  #proc-list, #proc-list::picker(select) { appearance: base-select; }
+  #proc-list::picker(select) {
+    background: var(--card-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    width: anchor-size(width);
+    max-height: min(280px, 45vh);
+    position-area: block-end span-inline-end;
+    position-try-fallbacks: flip-block;
+    position-try-order: normal;
+  }
+  #proc-list option:not([value=""]) {
+    display: grid;
+    grid-template-columns: 1em repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #proc-list option::checkmark { display: block; }
+  #proc-list option:not(:checked)::checkmark { visibility: hidden; }
+  #proc-list option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #proc-list option .proc-separator { display: none; }
+  #proc-list option .proc-name { color: var(--muted); }
+}
 
 /* Hotkey capture */
 .hotkey-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }

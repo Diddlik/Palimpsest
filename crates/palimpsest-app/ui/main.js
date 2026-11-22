@@ -40,6 +40,7 @@ const el = {
   pairs: $("pairs"),
   addPair: $("add-pair"),
   ignore: $("ignore"),
+  procFilter: $("proc-filter"),
   procList: $("proc-list"),
   addProc: $("add-proc"),
   refreshProc: $("refresh-proc"),
@@ -178,6 +179,7 @@ async function refreshLocale() {
 // built from data (hotkey labels, history rows, learned words).
 function retranslate() {
   applyI18n();
+  if (el.procList.options.length) renderProcesses();
   el.enabledLabel.textContent = el.enabled.checked ? t("on") : t("paused");
   renderHotkey();
   renderHistory();
@@ -290,19 +292,49 @@ function readPairs() {
 
 // ----- Process picker --------------------------------------------------------
 
+let runningProcesses = [];
+
 async function loadProcesses() {
+  if (el.refreshProc.disabled) return;
+  el.refreshProc.disabled = true;
   try {
-    const procs = await invoke("list_processes");
-    el.procList.innerHTML = "";
-    for (const name of procs) {
-      const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      el.procList.appendChild(opt);
-    }
+    runningProcesses = await invoke("list_processes");
+    renderProcesses();
   } catch (e) {
     setStatus(t("listAppsFailed", { error: e }));
+  } finally {
+    el.refreshProc.disabled = false;
   }
+}
+
+function renderProcesses() {
+  const previous = el.procList.value;
+  const query = el.procFilter.value.trim().toLowerCase();
+  const options = [];
+  for (const { exe, display_name } of runningProcesses) {
+    if (!exe.toLowerCase().includes(query) && !display_name?.toLowerCase().includes(query)) continue;
+
+    const option = new Option("", exe);
+    const filename = document.createElement("span");
+    const separator = document.createElement("span");
+    const name = document.createElement("span");
+    filename.textContent = exe;
+    separator.className = "proc-separator";
+    separator.textContent = display_name ? " — " : "";
+    name.className = "proc-name";
+    name.textContent = display_name || "";
+    option.append(filename, separator, name);
+    option.title = option.textContent;
+    if (exe === previous) option.selected = true;
+    options.push(option);
+  }
+  el.addProc.disabled = options.length === 0;
+  if (!options.length) {
+    const empty = new Option(t("noMatchingProcesses"), "", true, true);
+    empty.disabled = true;
+    options.push(empty);
+  }
+  el.procList.replaceChildren(...options);
 }
 
 function ignoreList() {
@@ -773,6 +805,7 @@ function wire() {
     apply();
   });
 
+  el.procFilter.addEventListener("input", renderProcesses);
   el.addProc.addEventListener("click", () => addIgnore(el.procList.value));
   el.refreshProc.addEventListener("click", loadProcesses);
 
@@ -1039,7 +1072,6 @@ async function init() {
   } catch (e) {
     setStatus(t("listLayoutsFailed", { error: e }));
   }
-  await loadProcesses();
   await loadWords();
   try {
     const config = await invoke("get_config");
@@ -1052,6 +1084,7 @@ async function init() {
   } catch (e) {
     setStatus(t("loadFailed", { error: e }));
   }
+  loadProcesses();
   try {
     appVersion = await invoke("app_version");
     renderAbout();

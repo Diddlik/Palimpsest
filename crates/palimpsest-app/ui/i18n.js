@@ -46,6 +46,8 @@ const I18N = {
       "Palimpsest stays completely silent in these — terminals, IDEs, games. Pick one from your running apps, or type executable names (one per line, e.g. <code>cmd.exe</code>).",
     add: "Add",
     refreshList: "Refresh list",
+    filterProcesses: "Filter by executable or app name",
+    noMatchingProcesses: "No matching processes",
 
     language: "Language",
     languageHint:
@@ -226,6 +228,8 @@ const I18N = {
       "В них Palimpsest полностью молчит — терминалы, IDE, игры. Выберите из запущенных приложений или впишите имена исполняемых файлов (по одному в строке, например <code>cmd.exe</code>).",
     add: "Добавить",
     refreshList: "Обновить список",
+    filterProcesses: "Фильтр по имени файла или приложения",
+    noMatchingProcesses: "Подходящих процессов нет",
 
     language: "Язык",
     languageHint:
@@ -406,6 +410,8 @@ const I18N = {
       "У них Palimpsest повністю мовчить — термінали, IDE, ігри. Оберіть із запущених застосунків або впишіть імена виконуваних файлів (по одному в рядку, наприклад <code>cmd.exe</code>).",
     add: "Додати",
     refreshList: "Оновити список",
+    filterProcesses: "Фільтр за назвою файлу або застосунку",
+    noMatchingProcesses: "Відповідних процесів немає",
 
     language: "Мова",
     languageHint:
@@ -586,6 +592,8 @@ const I18N = {
       "Hier bleibt Palimpsest völlig still — Terminals, IDEs, Spiele. Aus den laufenden Apps auswählen oder Programmnamen eintragen (einer pro Zeile, z. B. <code>cmd.exe</code>).",
     add: "Hinzufügen",
     refreshList: "Liste aktualisieren",
+    filterProcesses: "Nach Dateiname oder App-Name filtern",
+    noMatchingProcesses: "Keine passenden Prozesse",
 
     language: "Sprache",
     languageHint:

@@ -91,10 +91,10 @@ pub fn open_logs() -> Result<(), String> {
     crate::logging::reveal().map_err(|e| e.to_string())
 }
 
-/// Executable names of currently running processes, for the ignore-list picker.
+/// Running executables and their optional display names, for the ignore-list picker.
 #[tauri::command]
-pub fn list_processes() -> Vec<String> {
-    processes::running()
+pub async fn list_processes() -> Result<Vec<processes::RunningProcess>, String> {
+    tauri::async_runtime::spawn_blocking(processes::running).await.map_err(|e| e.to_string())
 }
 
 /// Keyboard layouts the user actually has installed, for the layout-pair picker.

@@ -41,6 +41,9 @@ Rust workspace, two crates:
   over six panes (General, Layouts, Hotkeys, History, Diary, About); a `.pane` is
   shown by `.active`, and `main.js` keeps exactly one tab and one pane marked.
   User-facing text is localized — see "Localization" below.
+  The ignored-process picker reads optional Windows executable descriptions on
+  a blocking worker. It filters by filename or display name and saves only the
+  executable filename, which the engine uses for matching.
 - `crates/palimpsest-core/examples` — manual Windows spike programs
   (`spike_hook`, `spike_correct`, `spike_context`); interactive, not a substitute
   for tests.

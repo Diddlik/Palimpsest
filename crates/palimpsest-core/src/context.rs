@@ -69,18 +69,24 @@ impl Context {
 }
 
 /// Query the full image path of `pid` and reduce it to a lowercased file name.
-unsafe fn exe_for_pid(pid: u32) -> Option<String> {
-    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+fn exe_for_pid(pid: u32) -> Option<String> {
     let mut buf = [0u16; 260];
-    let mut len = buf.len() as u32;
-    let result =
-        QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
-    let _ = CloseHandle(handle);
-    result.ok()?;
-
-    let path = String::from_utf16_lossy(&buf[..len as usize]);
+    let len = image_path_for_pid(pid, &mut buf)?;
+    let path = String::from_utf16_lossy(&buf[..len]);
     let file = path.rsplit(['\\', '/']).next().unwrap_or(&path);
     Some(file.to_ascii_lowercase())
+}
+
+pub(crate) fn image_path_for_pid(pid: u32, buf: &mut [u16]) -> Option<usize> {
+    let mut len = buf.len() as u32;
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let result =
+            QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
+        let _ = CloseHandle(handle);
+        result.ok()?;
+    }
+    Some(len as usize)
 }
 
 /// Best-effort: is the control with keyboard focus a native password edit box?

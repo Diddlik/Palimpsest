@@ -112,15 +112,19 @@
         </div>
 
         <div class="card">
-          <h2 data-i18n="ignoreApps">Ignore in these apps</h2>
+          <h2 id="ignore-apps-label" data-i18n="ignoreApps">Ignore in these apps</h2>
           <p class="hint" data-i18n-html="ignoreAppsHint">
             Palimpsest stays completely silent in these — terminals, IDEs, games.
             Pick one from your running apps, or type executable names (one per
             line, e.g. <code>cmd.exe</code>).
           </p>
+          <div class="field process-filter">
+            <label for="proc-filter" data-i18n="filterProcesses">Filter by executable or app name</label>
+            <input id="proc-filter" type="search" spellcheck="false" aria-controls="proc-list" />
+          </div>
           <div class="picker-row">
-            <select id="proc-list"></select>
-            <button class="ghost" id="add-proc" type="button" data-i18n="add">Add</button>
+            <select id="proc-list" aria-labelledby="ignore-apps-label"></select>
+            <button class="ghost" id="add-proc" type="button" data-i18n="add" disabled>Add</button>
             <button class="ghost" id="refresh-proc" type="button" data-i18n-title="refreshList">↻</button>
           </div>
           <textarea id="ignore" rows="4" spellcheck="false"></textarea>
